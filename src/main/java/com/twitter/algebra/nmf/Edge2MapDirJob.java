@@ -52,7 +52,6 @@ import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
 
 /**
- * Transpose a matrix borrowed from Mahout's {@link Edge2MapDirJob}
  */
 public class Edge2MapDirJob extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(Edge2MapDirJob.class);

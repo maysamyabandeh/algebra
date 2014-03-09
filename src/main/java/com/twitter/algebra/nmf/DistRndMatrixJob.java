@@ -56,7 +56,6 @@ import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
 
 /**
- * Transpose a matrix borrowed from Mahout's {@link DistRndMatrixJob}
  */
 public class DistRndMatrixJob extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(DistRndMatrixJob.class);

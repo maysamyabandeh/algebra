@@ -16,10 +16,9 @@ import com.myabandeh.algebra.AlgebraCommon;
 import com.myabandeh.algebra.TransposeJob;
 import com.myabandeh.algebra.matrix.multiply.ABInnerHDFSBroadcastOfB;
 import com.myabandeh.algebra.matrix.multiply.ABOuterHDFSBroadcastOfA;
-import com.myabandeh.algebra.matrix.multiply.AtBOuterDynamicMapsideJoin;
 import com.myabandeh.algebra.matrix.multiply.AtBOuterStaticMapsideJoinJob;
+import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
 import com.twitter.algebra.nmf.CompositeDMJ;
-import com.twitter.algebra.nmf.DMJ;
 import com.twitter.algebra.nmf.XtXJob;
 
 public class MultiplicationTest extends Assert {
@@ -216,26 +215,10 @@ public class MultiplicationTest extends Assert {
 
   public void testDMJ(Path atPath, Path bPath, String label)
       throws Exception {
-    DMJ job = new DMJ();
+    AtB_DMJ job = new AtB_DMJ();
     Path outPath =
-        new Path(output, DMJ.class.getName() + label);
-    job.run(conf, atPath, bPath, outPath, rowsA, colsB, colsB, true, 1);
-    verifyProduct(outPath);
-  }
-
-  @Test
-  public void testAtBOuterMapDirOfA() throws Exception {
-    testAtBOuterMapDirOfA(atDensePath, bDensePath, "Dense");
-    System.gc();// otherwise my jvm does not automatically free the memory!
-    testAtBOuterMapDirOfA(atSparsePath, bSparsePath, "Sparse");
-  }
-
-  public void testAtBOuterMapDirOfA(Path atPath, Path bPath, String label)
-      throws Exception {
-    AtBOuterDynamicMapsideJoin job = new AtBOuterDynamicMapsideJoin();
-    Path outPath =
-        new Path(output, AtBOuterDynamicMapsideJoin.class.getName() + label);
-    job.run(conf, atPath, bPath, outPath, rowsA, colsB, true, 1);
+        new Path(output, AtB_DMJ.class.getName() + label);
+    job.run(conf, atPath, bPath, outPath, rowsA, colsB, colsB, true);
     verifyProduct(outPath);
   }
 

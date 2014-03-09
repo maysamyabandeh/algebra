@@ -1,4 +1,4 @@
-package com.twitter.algebra.nmf;
+package com.twitter.algebra.matrix.text;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -26,6 +26,8 @@ import org.apache.mahout.math.Vector.Element;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.twitter.algebra.nmf.RowColPartitioner;
 
 /**
  * {@link AtBOuterDynamicMapsideJoin} requires the smaller matrix to be in

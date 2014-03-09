@@ -1,4 +1,4 @@
-package com.twitter.algebra.nmf;
+package com.myabandeh.algebra.matrix.multiply;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -36,7 +36,6 @@ import com.myabandeh.algebra.AlgebraCommon.ExcludeMetaFilesFilter;
 import com.myabandeh.algebra.matrix.format.MapDir;
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
-import com.myabandeh.algebra.matrix.multiply.AtBOuterStaticMapsideJoinJob;
 import com.twitter.algebra.nmf.NMFCommon;
 
 /**
@@ -58,8 +57,8 @@ import com.twitter.algebra.nmf.NMFCommon;
  * generates partial matrix Ci. The reducers sum up partial Ci matrices to get C
  * = A x B.
  */
-public class DMJ extends AbstractJob {
-  private static final Logger log = LoggerFactory.getLogger(DMJ.class);
+public class AtB_DMJ extends AbstractJob {
+  private static final Logger log = LoggerFactory.getLogger(AtB_DMJ.class);
 
   public static final String MATRIXINMEMORY = "matrixInMemory";
   /**
@@ -90,19 +89,18 @@ public class DMJ extends AbstractJob {
     Path bPath = new Path(getOption("bMatrix"));
     int atCols = Integer.parseInt(getOption("numColsAt"));
     int bCols = Integer.parseInt(getOption("numColsB"));
-    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, bCols, true, 1);
+    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, bCols, true);
     return 0;
   }
 
   /**
    * Perform A x B, where At and B are already wrapped in a DistributedRowMatrix
-   * object. Refer to {@link DMJ} for further details.
+   * object. Refer to {@link AtB_DMJ} for further details.
    * 
    * @param conf the initial configuration
    * @param At transpose of matrix A
    * @param B matrix B
    * @param label the label for the output directory
-   * @param numberOfJobs the hint for the desired number of parallel jobs
    * @return AxB wrapped in a DistributedRowMatrix object
    * @throws IOException
    * @throws InterruptedException
@@ -110,18 +108,18 @@ public class DMJ extends AbstractJob {
    */
   public static DistributedRowMatrix run(Configuration conf,
       DistributedRowMatrix At, DistributedRowMatrix B, int partitionCols, String label,
-      boolean useCombiner, int numberOfJobs) throws IOException,
+      boolean useCombiner) throws IOException,
       InterruptedException, ClassNotFoundException {
-    log.info("running " + DMJ.class.getName());
+    log.info("running " + AtB_DMJ.class.getName());
     if (At.numRows() != B.numRows()) {
       throw new CardinalityException(At.numRows(), B.numRows());
     }
     Path outPath = new Path(At.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
-    DMJ job = new DMJ();
+    AtB_DMJ job = new AtB_DMJ();
     if (!fs.exists(outPath)) {
       job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
-          B.numCols(), partitionCols, useCombiner, numberOfJobs);
+          B.numCols(), partitionCols, useCombiner);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
@@ -135,170 +133,46 @@ public class DMJ extends AbstractJob {
   /**
    * Perform A x B, where A and B refer to the paths that contain matrices in
    * {@link SequenceFileInputFormat}. The smaller of At and B must also conform
-   * with {@link MapDir} format. Refer to {@link DMJ} for further details.
+   * with {@link MapDir} format. Refer to {@link AtB_DMJ} for further details.
    * 
    * @param conf the initial configuration
    * @param atPath path to transpose of matrix A.
    * @param bPath path to matrix B
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
-   * @param numberOfJobs the hint for the desired number of parallel jobs
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public void run(Configuration conf, Path atPath, Path bPath,
-      Path matrixOutputPath, int atCols, int bCols, int partitionCols, boolean useCombiner,
-      int numberOfJobs) throws IOException, InterruptedException,
-      ClassNotFoundException {
+      Path matrixOutputPath, int atCols, int bCols, int partitionCols,
+      boolean useCombiner) throws IOException,
+      InterruptedException, ClassNotFoundException {
     FileSystem fs = FileSystem.get(atPath.toUri(), conf);
     long atSize = MapDir.du(atPath, fs);
     long bSize = MapDir.du(bPath, fs);
     log.info("Choosing the smaller matrix: atSize: " + atSize + " bSize: "
         + bSize);
     boolean aIsMapDir = atSize < bSize;
+    AtB_DMJ job = new AtB_DMJ();
+    Job hjob;
     if (aIsMapDir)
-      runJobsInParallel(conf, atPath, bPath, matrixOutputPath, atCols, bCols, partitionCols,
-          aIsMapDir, useCombiner, numberOfJobs);
+      hjob =
+          job.run(conf, atPath, bPath, matrixOutputPath, atCols, bCols,
+              partitionCols, aIsMapDir, useCombiner);
     else
-      runJobsInParallel(conf, bPath, atPath, matrixOutputPath, atCols, bCols, partitionCols,
-          aIsMapDir, useCombiner, numberOfJobs);
-  }
-
-  /**
-   * Split a big job into multiple smaller jobs. Each job should be more
-   * efficient as it puts less load on the reducers. We also can run the jobs in
-   * parallel.
-   * 
-   * The maximum number of jobs is the number of column partitions produced by
-   * the {@link ColPartitionJob}.
-   * 
-   * @param conf
-   * @param mapDirPath the path to the matrix in MapDir format
-   * @param matrixInputPath the input matrix path that we iterate on
-   * @param matrixOutputPath the output matrix path
-   * @param atCols number of columns in At
-   * @param aIsMapDir is A chosen to be loaded as MapDir
-   * @param numberOfJobs the hint for the desired number of parallel jobs
-   * @throws IOException
-   * @throws InterruptedException
-   * @throws ClassNotFoundException
-   */
-  private static void runJobsInParallel(Configuration conf, Path mapDirPath,
-      Path matrixInputPath, Path matrixOutputPath, int atCols, int bCols, int partitionCols, 
-      boolean aIsMapDir, boolean useCombiner, int numberOfJobs)
-      throws IOException, InterruptedException, ClassNotFoundException {
-    if (numberOfJobs == 1) {
-      DMJ job = new DMJ();
-      Job hjob =
-          job.run(conf, mapDirPath, new Path[] { matrixInputPath },
-              matrixOutputPath, atCols, bCols, partitionCols, aIsMapDir, useCombiner);
-      boolean res = hjob.waitForCompletion(true);
-      if (!res)
-        throw new IOException("Job failed! ");
-      return;
-    }
-
-    FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
-    FileStatus[] files =
-        fs.listStatus(mapDirPath, new AlgebraCommon.ExcludeMetaFilesFilter());
-    int numColPartitions = files.length;
-
-    // use the hint and max feasible parallelism to find an optimum degree for
-    // parallelism
-    numberOfJobs = numColPartitions;
-
-    // run the jobs
-    Job[] jobs = new Job[numberOfJobs];
-    int nextPartitionIndex = 0;
-    for (int jobIndex = 0; jobIndex < numberOfJobs; jobIndex++) {
-      DMJ job = new DMJ();
-      Path subJobOutPath = new Path(matrixOutputPath, "" + jobIndex);
-
-      jobs[jobIndex] =
-          job.run(conf, new Path(mapDirPath, "" + jobIndex),
-              new Path[] { matrixInputPath }, subJobOutPath, atCols, bCols, partitionCols, 
-              aIsMapDir, useCombiner);
-      // boolean res = jobs[jobIndex].waitForCompletion(true);
-      // if (!res)
-      // throw new IOException("Job failed! " + jobIndex);
-    }
-
-    // wait for the jobs (in case they are run in parallel and move their output
-    // to the main output directory
-    for (int jobIndex = 0; jobIndex < numberOfJobs; jobIndex++) {
-      boolean res = jobs[jobIndex].waitForCompletion(true);
-      if (!res)
-        throw new IOException("Job failed! " + jobIndex);
-      // Path subJobDir = new Path(matrixOutputPath, "" + jobIndex);
-      // FileStatus[] jobOutFiles = fs.listStatus(subJobDir,
-      // new ExcludeMetaFilesFilter());
-      // for (FileStatus jobOutFile : jobOutFiles) {
-      // Path src = jobOutFile.getPath();
-      // Path dst = new Path(matrixOutputPath, src.getName());
-      // // unique name by indexing with folder id
-      // log.info("fs.rename " + src + " -> " + dst);
-      // fs.rename(src, dst);
-      // }
-      // log.info("fs.delete " + subJobDir);
-      // fs.delete(subJobDir, true);
-    }
-  }
-
-  /**
-   * How many column partitions are generated by the transpose job? The
-   * partition number is embedded in the file name
-   * 
-   * @param files the files produced by the transpose job
-   * @return number of column partitions in the files
-   */
-  private static int computeNumOfColPartitions(FileStatus[] files) {
-    Set<Integer> partitionSet = new HashSet<Integer>();
-    for (FileStatus fileStatus : files) {
-      String fileName = fileStatus.getPath().getName();// part-cp-1-r-00002-j-10
-      Scanner scanner = new Scanner(fileName);
-      scanner.useDelimiter("-");
-      scanner.next();// part
-      scanner.next();// cp
-      String filePartitionStr = scanner.next();
-      int filePartitionIndex = Integer.parseInt(filePartitionStr);
-      partitionSet.add(filePartitionIndex);
-    }
-    return partitionSet.size();
-  }
-
-  /**
-   * Filter the files belong to a column partition to the list. The partition
-   * number is embedded in the file name.
-   * 
-   * @param files the input files
-   * @param partitionIndex the index of the column partition
-   * @param inFilesList the result list of filtered files
-   */
-  @SuppressWarnings("deprecation")
-  private static void addFilesOfAPartition(FileStatus[] files,
-      int partitionIndex, List<Path> inFilesList) {
-    for (FileStatus fileStatus : files) {
-      String fileName = fileStatus.getPath().getName();// part-cp-1-r-00002-j-10
-      Scanner scanner = new Scanner(fileName);
-      scanner.useDelimiter("-");
-      scanner.next();// part
-      scanner.next();// cp
-      String filePartitionStr = scanner.next();
-      int filePartitionIndex = Integer.parseInt(filePartitionStr);
-      if (filePartitionIndex == partitionIndex) {
-        if (fileStatus.isDir())// mapfile
-          inFilesList.add(new Path(fileStatus.getPath(), "data"));
-        else
-          inFilesList.add(fileStatus.getPath());
-      }
-    }
+      hjob =
+          job.run(conf, bPath, atPath, matrixOutputPath, atCols, bCols,
+              partitionCols, aIsMapDir, useCombiner);
+    boolean res = hjob.waitForCompletion(true);
+    if (!res)
+      throw new IOException("Job failed! ");
   }
 
   /**
    * Perform A x B, where At and B refer to the paths that contain matrices in
    * {@link SequenceFileInputFormat}. One of At and B must also conform with
-   * {@link MapDir} format. Refer to {@link DMJ} for further details.
+   * {@link MapDir} format. Refer to {@link AtB_DMJ} for further details.
    * 
    * @param conf the initial configuration
    * @param mapDirPath path to the matrix in {@link MapDir} format
@@ -313,7 +187,7 @@ public class DMJ extends AbstractJob {
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
-  public Job run(Configuration conf, Path mapDirPath, Path[] matrixInputPaths,
+  public Job run(Configuration conf, Path mapDirPath, Path matrixInputPaths,
       Path matrixOutputPath, int atCols, int bCols, int partitionCols, boolean aIsMapDir,
       boolean useCombiner) throws IOException, InterruptedException,
       ClassNotFoundException {
@@ -323,18 +197,17 @@ public class DMJ extends AbstractJob {
     conf.setInt(RESULTCOLS, bCols);
     conf.setInt(PARTITIONCOLS, partitionCols);
     FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
-    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPaths, "dmj");
+    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPaths}, "dmj");
 
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
-    job.setJarByClass(DMJ.class);
-    job.setJobName(DMJ.class.getSimpleName());
+    job.setJarByClass(AtB_DMJ.class);
+    job.setJobName(AtB_DMJ.class.getSimpleName());
     matrixOutputPath = fs.makeQualified(matrixOutputPath);
 
-    for (Path path : matrixInputPaths) {
-      path = fs.makeQualified(path);
-      MultipleInputs.addInputPath(job, path, SequenceFileInputFormat.class);
-    }
+    matrixInputPaths = fs.makeQualified(matrixInputPaths);
+    MultipleInputs.addInputPath(job, matrixInputPaths,
+        SequenceFileInputFormat.class);
 
     FileOutputFormat.setOutputPath(job, matrixOutputPath);
     job.setMapperClass(MyMapper.class);

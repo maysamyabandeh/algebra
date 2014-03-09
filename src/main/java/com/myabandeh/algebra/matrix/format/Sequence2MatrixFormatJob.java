@@ -18,7 +18,6 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.matrix.multiply.AtBOuterDynamicMapsideJoin;
 import com.twitter.algebra.nmf.NMFCommon;
 
 /**

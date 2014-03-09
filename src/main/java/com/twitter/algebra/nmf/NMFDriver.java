@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import com.myabandeh.algebra.AlgebraCommon;
 import com.myabandeh.algebra.TransposeJob;
 import com.myabandeh.algebra.matrix.format.Sequence2MatrixFormatJob;
-import com.myabandeh.algebra.matrix.multiply.AtBOuterDynamicMapsideJoin;
+import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
 
 /**
  * 
@@ -133,7 +133,7 @@ public class NMFDriver extends AbstractJob {
     DistributedRowMatrix distYYt = new XtXJob().computeXtX(distYt, getTempPath(), conf, "YYt" + round);
     distYYt = CombinerJob.run(conf, distYYt, "YYt-compact" + round);
     DistributedRowMatrix distYtCol = ColPartitionJob.partition(distYt, conf, "Ytcol" + round, NUM_COL_PARTITIONS);
-    DistributedRowMatrix distXYt = DMJ.run(conf, distXt, distYtCol, COLPARTITION_SIZE, "XYt" + round, false, 1);
+    DistributedRowMatrix distXYt = AtB_DMJ.run(conf, distXt, distYtCol, COLPARTITION_SIZE, "XYt" + round, false);
 
     DistributedRowMatrix distAdotXYtdivAYYt = 
         CompositeDMJ.run(conf, distA, distXYt, distYYt, "A.XYtdAYYt" + round, alpha1, alpha2, 1);
@@ -146,7 +146,7 @@ public class NMFDriver extends AbstractJob {
     Matrix centAtA = centAAt.transpose();
     DistributedRowMatrix distAtA = AlgebraCommon.toMapDir(centAtA, getTempPath(), getTempPath(), "AtA" + round);
     DistributedRowMatrix distACol = ColPartitionJob.partition(distA, conf, "Acol" + round, NUM_COL_PARTITIONS);
-    DistributedRowMatrix distXtA = DMJ.run(conf, distX, distACol, COLPARTITION_SIZE, "XtA" + round, false, 1);
+    DistributedRowMatrix distXtA = AtB_DMJ.run(conf, distX, distACol, COLPARTITION_SIZE, "XtA" + round, false);
 //    DistributedRowMatrix distXtA = AtBOuterDynamicMapsideJoin.run(conf, distX, distA, "XtA" + round, true, 1);
     DistributedRowMatrix distYtdotXtAdivYtAtA = 
         CompositeDMJ.run(conf, distYt, distXtA, distAtA, "Yt.XtAdYtAtA" + round, lambda1, lambda2, 1);
@@ -158,25 +158,6 @@ public class NMFDriver extends AbstractJob {
     
     }
 
-  }
-
-
-  /**
-   * A randomly initialized matrix
-   * 
-   * @param rows
-   * @param cols
-   * @return
-   */
-  static Matrix randomMatrix(int rows, int cols) {
-    Matrix randM = new DenseMatrix(rows, cols);
-    randM.assign(new DoubleFunction() {
-      @Override
-      public double apply(double arg1) {
-        return random.nextDouble();
-      }
-    });
-    return randM;
   }
 
   /**

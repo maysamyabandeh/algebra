@@ -7,11 +7,6 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Partitioner;
 
 /**
- * We enforce total order in MapReudce output via {@link RowColPartitioner} and
- * {@link MatrixOutputFormat}. Each matrix job needs to derive its partitioner
- * from {@link RowColPartitioner} and set its output format from
- * {@link MatrixOutputFormat}. The output of each reducer must be also locally
- * sorted.
  * 
  * An example of how to extend {@link RowColPartitioner} is
  * {@link ElementRowColPartitioner} class.

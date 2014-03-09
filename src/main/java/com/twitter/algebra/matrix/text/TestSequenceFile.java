@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.twitter.algebra.nmf;
+package com.twitter.algebra.matrix.text;
 
 import java.io.IOException;
 import java.util.Iterator;
