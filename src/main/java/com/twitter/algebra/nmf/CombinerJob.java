@@ -1,52 +1,57 @@
 package com.twitter.algebra.nmf;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Mapper.Context;
-import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.mahout.common.AbstractJob;
-import org.apache.mahout.math.CardinalityException;
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.DenseVector;
-import org.apache.mahout.math.RandomAccessSparseVector;
-import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.function.Functions;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.TransposeJob;
+import com.myabandeh.algebra.MergeVectorsReducer;
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
-import com.twitter.algebra.nmf.CompositeDMJ.MyMapper;
 
-
+/**
+ * Combiner smaller (row) partitions to get bigger files. This would put less
+ * getfileinfo load on the name node.
+ * 
+ * @author myabandeh
+ * 
+ */
 public class CombinerJob extends AbstractJob {
   private static final Logger log = LoggerFactory
       .getLogger(CombinerJob.class);
 
-  public static final String SAMPLERATE = "sampleRate";
-
   @Override
   public int run(String[] strings) throws Exception {
+    addInputOption();
+    addOption("numRows", "nr", "Number of rows of the input matrix");
+    addOption("numCols", "nc", "Number of columns of the input matrix");
+    Map<String, List<String>> parsedArgs = parseArguments(strings);
+    if (parsedArgs == null) {
+      return -1;
+    }
 
+    int numRows = Integer.parseInt(getOption("numRows"));
+    int numCols = Integer.parseInt(getOption("numCols"));
+
+    DistributedRowMatrix matrix =
+        new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
+            numCols);
+    matrix.setConf(new Configuration(getConf()));
+    CombinerJob.run(getConf(), matrix, "combined-" + getInputPath());
     return 0;
   }
 
@@ -81,31 +86,25 @@ public class CombinerJob extends AbstractJob {
     FileInputFormat.addInputPath(job, matrixInputPath);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     FileOutputFormat.setOutputPath(job, matrixOutputPath);
-  //  job.setMapperClass(MyMapper.class);
     
     int numReducers = NMFCommon.getNumberOfReduceSlots(conf, "combiner");
     job.setNumReduceTasks(numReducers);// TODO: make it a parameter
     
-//    job.setNumReduceTasks(15);
     job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
     
     job.setMapperClass(IdMapper.class);
-    job.setReducerClass(TransposeJob.MergeVectorsReducer.class);
+    job.setReducerClass(MergeVectorsReducer.class);
 
     RowPartitioner.setPartitioner(job, RowPartitioner.IntRowPartitioner.class,
         aRows);
 
-    // since we do not use reducer, to get total order, the map output files has
-    // to be renamed after this function returns: {@link AlgebraCommon#fixPartitioningProblem}
     job.submit();
     boolean res = job.waitForCompletion(true);
     if (!res)
       throw new IOException("Job failed!");
   }
-
-  
 
   public static class IdMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
@@ -115,7 +114,6 @@ public class CombinerJob extends AbstractJob {
       context.write(key, value);
     }
   }
-
 
 }
 

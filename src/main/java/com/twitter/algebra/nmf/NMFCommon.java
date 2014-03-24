@@ -17,7 +17,7 @@ public class NMFCommon {
   static final String MAPSPLOTS = "algebra.mapslots";
   static final String REDUCESLOTS = "algebra.reduceslots";
   static final int DEFAULT_REDUCESPLOTS = 100;
-  
+
   public static void main(String[] args) throws IOException {
     if (args.length < 1) {
       System.err.println("input text file is missing");
@@ -25,32 +25,38 @@ public class NMFCommon {
     }
     readHashMap(args[0]);
   }
-  
-  public static HashMap<Long, Integer> readHashMap(String inputStr) throws IOException {
+
+  public static HashMap<Long, Integer> readHashMap(String inputStr)
+      throws IOException {
     HashMap<Long, Integer> hashMap = new HashMap<Long, Integer>();
-    
+
     Configuration conf = new Configuration();
     Path finalNumberFile = new Path(inputStr + "/part-r-00000");
-    SequenceFile.Reader reader = new SequenceFile.Reader(FileSystem.get(conf),
-        finalNumberFile, conf);
+    @SuppressWarnings("deprecation")
+    SequenceFile.Reader reader =
+        new SequenceFile.Reader(FileSystem.get(conf), finalNumberFile, conf);
     double sum = 0;
     LongWritable key = new LongWritable();
     IntWritable value = new IntWritable();
     while (reader.next(key, value)) {
       hashMap.put(key.get(), value.get());
-
-//      System.out.println("# "+ key + " " + value);
     }
-    System.out.println("SUM "+ sum);
+    System.out.println("SUM " + sum);
     reader.close();
     return hashMap;
   }
-  
-  public static void setNumberOfMapSlots(Configuration conf, FileSystem fs, Path[] paths, String joblabel) {
+
+  public static void setNumberOfMapSlots(Configuration conf, FileSystem fs,
+      Path path, String joblabel) {
+    setNumberOfMapSlots(conf, fs, new Path[] {path}, joblabel);
+  }
+
+  public static void setNumberOfMapSlots(Configuration conf, FileSystem fs,
+      Path[] paths, String joblabel) {
     if (conf.get(MAPSPLOTS) == null)
       return;
     int mapSlots = conf.getInt(MAPSPLOTS, 1);
-    mapSlots = conf.getInt(MAPSPLOTS+"."+joblabel, mapSlots);
+    mapSlots = conf.getInt(MAPSPLOTS + "." + joblabel, mapSlots);
     long du = 0;
     try {
       for (Path path : paths)
@@ -61,20 +67,20 @@ public class NMFCommon {
       e.printStackTrace();
     }
     long splitSize = du / mapSlots;
-    long minSplitSize = (long)(splitSize * 0.9);
-    long maxSplitSize = Math.max((long)(splitSize * 1.1),  1024 * 1024);
+    long minSplitSize = (long) (splitSize * 0.9);
+    long maxSplitSize = Math.max((long) (splitSize * 1.1), 1024 * 1024);
     conf.setLong("mapred.min.split.size", minSplitSize);
     conf.setLong("mapreduce.min.split.size", minSplitSize);
     conf.setLong("mapred.max.split.size", maxSplitSize);
     conf.setLong("mapreduce.max.split.size", maxSplitSize);
   }
-  
+
   public static int getNumberOfReduceSlots(Configuration conf, String joblabel) {
     int redSlots = conf.getInt(REDUCESLOTS, DEFAULT_REDUCESPLOTS);
-    redSlots = conf.getInt(REDUCESLOTS+"."+joblabel, redSlots);
+    redSlots = conf.getInt(REDUCESLOTS + "." + joblabel, redSlots);
     return redSlots;
   }
-  
+
   static void printMemUsage() {
     int mb = 1024 * 1024;
     // Getting the runtime reference from system

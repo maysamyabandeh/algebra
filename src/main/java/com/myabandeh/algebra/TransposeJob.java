@@ -36,7 +36,6 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.RandomAccessSparseVector;
-import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -135,7 +134,7 @@ public class TransposeJob extends AbstractJob {
     conf.setInt(NUM_ORIG_ROWS_KEY, numInputRows);
     conf.setInt(RowPartitioner.TOTAL_KEYS, numInputCols);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
-    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPath}, "transpose");
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath, "transpose");
     
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
@@ -203,19 +202,6 @@ public class TransposeJob extends AbstractJob {
         Iterable<VectorWritable> vectors, Context context) throws IOException,
         InterruptedException {
       context.write(key, VectorWritable.merge(vectors.iterator()));
-    }
-  }
-
-  public static class MergeVectorsReducer
-      extends
-      Reducer<WritableComparable<?>, VectorWritable, WritableComparable<?>, VectorWritable> {
-    @Override
-    public void reduce(WritableComparable<?> key,
-        Iterable<VectorWritable> vectors, Context context) throws IOException,
-        InterruptedException {
-      Vector merged = VectorWritable.merge(vectors.iterator()).get();
-      context.write(key, new VectorWritable(new SequentialAccessSparseVector(
-          merged)));
     }
   }
 }

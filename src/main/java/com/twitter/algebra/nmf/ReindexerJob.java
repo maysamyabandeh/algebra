@@ -18,7 +18,6 @@
 package com.twitter.algebra.nmf;
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -33,35 +32,23 @@ import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
-import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
-import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
-import org.apache.mahout.math.RandomAccessSparseVector;
-import org.apache.mahout.math.SequentialAccessSparseVector;
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
-import com.myabandeh.algebra.matrix.format.RowPartitioner;
-
 /**
+ * Reindex a matrix in edge format to allow the row ids fit into the integer
+ * range. The output is the reindex map.
  */
 public class ReindexerJob extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(ReindexerJob.class);
   public final static String TOTALINDEX_COUNTER_GROUP = "Result";
   public final static String TOTALINDEX_COUNTER_NAME = "totalIndex";
-
-
-  public static final String NUM_ORIG_ROWS_KEY = "SparseRowMatrix.numRows";
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new ReindexerJob(), args);
@@ -70,21 +57,15 @@ public class ReindexerJob extends AbstractJob {
   @Override
   public int run(String[] strings) throws Exception {
     addInputOption();
-    // addOption("numRows", "nr", "Number of rows of the input matrix");
-    // addOption("numCols", "nc", "Number of columns of the input matrix");
     Map<String, List<String>> parsedArgs = parseArguments(strings);
     if (parsedArgs == null) {
       return -1;
     }
-
-    // int numRows = Integer.parseInt(getOption("numRows"));
-    // int numCols = Integer.parseInt(getOption("numCols"));
-
-    index(getConf(), getInputPath(), getTempPath(), getName(getInputPath().getName()));
-
+    index(getConf(), getInputPath(), getTempPath(), getName(getInputPath()
+        .getName()));
     return 0;
   }
-  
+
   public static String getName(String label) {
     return "Reindex-" + label;
   }
@@ -96,41 +77,27 @@ public class ReindexerJob extends AbstractJob {
     FileSystem fs = FileSystem.get(outputPath.toUri(), conf);
     ReindexerJob job = new ReindexerJob();
     if (!fs.exists(outputPath)) {
-      Job mrJob = job.run(conf, input, outputPath, 0, 0);
-      long totalIndex = mrJob.getCounters().getGroup(TOTALINDEX_COUNTER_GROUP).findCounter(TOTALINDEX_COUNTER_NAME).getValue();
-      return (int)totalIndex;
+      Job mrJob = job.run(conf, input, outputPath);
+      long totalIndex =
+          mrJob.getCounters().getGroup(TOTALINDEX_COUNTER_GROUP)
+              .findCounter(TOTALINDEX_COUNTER_NAME).getValue();
+      return (int) totalIndex;
     } else {
       log.warn("----------- Skip already exists: " + outputPath);
       return -1;
     }
   }
 
-  /**
-   * Perform transpose of A, where A refers to the path that contains a matrix
-   * in {@link SequenceFileInputFormat}.
-   * 
-   * @param conf the initial configuration
-   * @param matrixInputPath the path to the input files that we process
-   * @param matrixOutputPath the path of the resulting transpose matrix
-   * @param numInputRows rows
-   * @param numInputCols cols
-   * @return the running job
-   * @throws IOException
-   * @throws InterruptedException
-   * @throws ClassNotFoundException
-   */
-  public Job run(Configuration conf, Path matrixInputPath,
-      Path matrixOutputPath, int numInputRows, int numInputCols)
+  public Job run(Configuration conf, Path matrixInputPath, Path matrixOutputPath)
       throws IOException, InterruptedException, ClassNotFoundException {
-    conf.setInt(NUM_ORIG_ROWS_KEY, numInputRows);
-    conf.setInt(RowPartitioner.TOTAL_KEYS, numInputCols);
     conf.set("mapreduce.input.keyvaluelinerecordreader.key.value.separator",
         "\t");
 
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJarByClass(ReindexerJob.class);
-    job.setJobName(ReindexerJob.class.getSimpleName() + "-" + matrixOutputPath.getName());
+    job.setJobName(ReindexerJob.class.getSimpleName() + "-"
+        + matrixOutputPath.getName());
 
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     matrixInputPath = fs.makeQualified(matrixInputPath);
@@ -143,15 +110,10 @@ public class ReindexerJob extends AbstractJob {
     job.setMapOutputKeyClass(LongWritable.class);
     job.setMapOutputValueClass(NullWritable.class);
 
-//    job.setPartitionerClass(RowPartitioner.IntRowPartitioner.class);
-    // ensures total order (when used with {@link MatrixOutputFormat}),
-//    RowPartitioner.setPartitioner(job, RowPartitioner.IntRowPartitioner.class,
-//        numCols);
-
     job.setReducerClass(MyReducer.class);
-    
+    // this makes the reindexing very slow but is necessary to have total order
     job.setNumReduceTasks(1);
-    
+
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(LongWritable.class);
     job.setOutputValueClass(IntWritable.class);
@@ -168,30 +130,13 @@ public class ReindexerJob extends AbstractJob {
     private LongWritable lw = new LongWritable();
 
     @Override
-    public void setup(Context context) throws IOException {
-      Configuration conf = context.getConfiguration();
-      // newNumCols = conf.getInt(NUM_ORIG_ROWS_KEY, Integer.MAX_VALUE);
-    }
-
-    @Override
     public void map(Text key, Text value, Context context) throws IOException,
         InterruptedException {
       long lrow = Long.parseLong(key.toString());
-      // lrow -= Integer.MAX_VALUE;
-      if (lrow > Long.MAX_VALUE) {
-        context.getCounter("InvalidInput", "toolongkey").increment(1);
-        return;
-      }
-      // throw new IOException("number " + key +
-      // " does not fit into an integer");
-
-//      int row = (int) lrow;
-
       lw.set(lrow);
       context.write(lw, nw);
     }
   }
-
 
   public static class MyReducer
       extends
@@ -207,44 +152,12 @@ public class ReindexerJob extends AbstractJob {
       nextIndex++;
       context.write(key, iw);
     }
-    
+
     @Override
     public void cleanup(Context context) throws IOException {
-      context.getCounter(TOTALINDEX_COUNTER_GROUP, TOTALINDEX_COUNTER_NAME).increment(nextIndex);
+      context.getCounter(TOTALINDEX_COUNTER_GROUP, TOTALINDEX_COUNTER_NAME)
+          .increment(nextIndex);
     }
-    
+
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

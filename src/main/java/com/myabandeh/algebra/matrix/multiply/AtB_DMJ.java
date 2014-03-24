@@ -1,16 +1,11 @@
 package com.myabandeh.algebra.matrix.multiply;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
-import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -27,12 +22,9 @@ import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
-import org.jboss.netty.handler.codec.http.HttpHeaders.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.AlgebraCommon;
-import com.myabandeh.algebra.AlgebraCommon.ExcludeMetaFilesFilter;
 import com.myabandeh.algebra.matrix.format.MapDir;
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
@@ -56,6 +48,10 @@ import com.twitter.algebra.nmf.NMFCommon;
  * Each mapper perform Ati x Bi (row i of At and row i of B) multiplication and
  * generates partial matrix Ci. The reducers sum up partial Ci matrices to get C
  * = A x B.
+ * 
+ * We can also partition the larger of A and B based on columns. This allows
+ * denser partial C matrices and hence much less load on the combiners. If the
+ * partial C matrix is small enough we can even use an in-memory combiner.
  */
 public class AtB_DMJ extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(AtB_DMJ.class);
@@ -70,6 +66,7 @@ public class AtB_DMJ extends AbstractJob {
   public static final String RESULTROWS = "matrix.result.num.rows";
   public static final String RESULTCOLS = "matrix.result.num.cols";
   public static final String PARTITIONCOLS = "matrix.partition.num.cols";
+  public static final String USEINMEMCOMBINER = "matrix.useInMemCombiner";
 
   @Override
   public int run(String[] strings) throws Exception {
@@ -100,15 +97,17 @@ public class AtB_DMJ extends AbstractJob {
    * @param conf the initial configuration
    * @param At transpose of matrix A
    * @param B matrix B
+   * @param colsPerPartition number of columns per column-partition
    * @param label the label for the output directory
+   * @param useInMemCombiner
    * @return AxB wrapped in a DistributedRowMatrix object
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public static DistributedRowMatrix run(Configuration conf,
-      DistributedRowMatrix At, DistributedRowMatrix B, int partitionCols, String label,
-      boolean useCombiner) throws IOException,
+      DistributedRowMatrix At, DistributedRowMatrix B, int colsPerPartition,
+      String label, boolean useInMemCombiner) throws IOException,
       InterruptedException, ClassNotFoundException {
     log.info("running " + AtB_DMJ.class.getName());
     if (At.numRows() != B.numRows()) {
@@ -119,7 +118,7 @@ public class AtB_DMJ extends AbstractJob {
     AtB_DMJ job = new AtB_DMJ();
     if (!fs.exists(outPath)) {
       job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
-          B.numCols(), partitionCols, useCombiner);
+          B.numCols(), colsPerPartition, useInMemCombiner);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
@@ -140,14 +139,17 @@ public class AtB_DMJ extends AbstractJob {
    * @param bPath path to matrix B
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
+   * @param bCols
+   * @param colsPerpartition
+   * @param useInMemCombiner
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public void run(Configuration conf, Path atPath, Path bPath,
-      Path matrixOutputPath, int atCols, int bCols, int partitionCols,
-      boolean useCombiner) throws IOException,
-      InterruptedException, ClassNotFoundException {
+      Path matrixOutputPath, int atCols, int bCols, int colsPerpartition,
+      boolean useInMemCombiner) throws IOException, InterruptedException,
+      ClassNotFoundException {
     FileSystem fs = FileSystem.get(atPath.toUri(), conf);
     long atSize = MapDir.du(atPath, fs);
     long bSize = MapDir.du(bPath, fs);
@@ -159,11 +161,11 @@ public class AtB_DMJ extends AbstractJob {
     if (aIsMapDir)
       hjob =
           job.run(conf, atPath, bPath, matrixOutputPath, atCols, bCols,
-              partitionCols, aIsMapDir, useCombiner);
+              colsPerpartition, aIsMapDir, useInMemCombiner);
     else
       hjob =
           job.run(conf, bPath, atPath, matrixOutputPath, atCols, bCols,
-              partitionCols, aIsMapDir, useCombiner);
+              colsPerpartition, aIsMapDir, useInMemCombiner);
     boolean res = hjob.waitForCompletion(true);
     if (!res)
       throw new IOException("Job failed! ");
@@ -180,7 +182,10 @@ public class AtB_DMJ extends AbstractJob {
    *          which we iterate
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
+   * @param bCols
+   * @param colsPerPartition
    * @param aIsMapDir is A chosen to be loaded as MapDir
+   * @param useInMemCombiner
    * @param numberOfJobs the hint for the desired number of parallel jobs
    * @return the running job
    * @throws IOException
@@ -188,16 +193,17 @@ public class AtB_DMJ extends AbstractJob {
    * @throws ClassNotFoundException
    */
   public Job run(Configuration conf, Path mapDirPath, Path matrixInputPaths,
-      Path matrixOutputPath, int atCols, int bCols, int partitionCols, boolean aIsMapDir,
-      boolean useCombiner) throws IOException, InterruptedException,
-      ClassNotFoundException {
+      Path matrixOutputPath, int atCols, int bCols, int colsPerPartition,
+      boolean aIsMapDir, boolean useInMemCombiner) throws IOException,
+      InterruptedException, ClassNotFoundException {
     conf.set(MATRIXINMEMORY, mapDirPath.toString());
     conf.setBoolean(AISMAPDIR, aIsMapDir);
+    conf.setBoolean(USEINMEMCOMBINER, useInMemCombiner);
     conf.setInt(RESULTROWS, atCols);
     conf.setInt(RESULTCOLS, bCols);
-    conf.setInt(PARTITIONCOLS, partitionCols);
+    conf.setInt(PARTITIONCOLS, colsPerPartition);
     FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
-    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPaths}, "dmj");
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPaths, "dmj");
 
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
@@ -214,11 +220,11 @@ public class AtB_DMJ extends AbstractJob {
     job.setMapOutputKeyClass(IntWritable.class);
     job.setMapOutputValueClass(VectorWritable.class);
 
-    if (useCombiner)
+    if (!useInMemCombiner)
       job.setCombinerClass(AtBOuterStaticMapsideJoinJob.MyReducer.class);
 
     int numReducers = NMFCommon.getNumberOfReduceSlots(conf, "dmj");
-    job.setNumReduceTasks(numReducers);// TODO: make it a parameter
+    job.setNumReduceTasks(numReducers);
     // ensures total order (when used with {@link MatrixOutputFormat}),
     RowPartitioner.setPartitioner(job, RowPartitioner.IntRowPartitioner.class,
         atCols);
@@ -260,6 +266,7 @@ public class AtB_DMJ extends AbstractJob {
       partitionCols = conf.getInt(PARTITIONCOLS, Integer.MAX_VALUE);
       otherMapDir = new MapDir(conf, inMemMatrixPath);
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);
+      useInMemCombiner = conf.getBoolean(USEINMEMCOMBINER, true);
       if (useInMemCombiner) {
         try {
           outValues = new double[resultRows * partitionCols];
@@ -316,6 +323,7 @@ public class AtB_DMJ extends AbstractJob {
     }
 
     private int minGlobalCol = Integer.MIN_VALUE;
+
     private int globalToLocalCol(int col) {
       int localCol = col % partitionCols;
       if (minGlobalCol == Integer.MIN_VALUE)

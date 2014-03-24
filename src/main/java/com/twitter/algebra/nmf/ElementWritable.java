@@ -18,18 +18,16 @@
 
 package com.twitter.algebra.nmf;
 
-
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.WritableComparator;
 
-/** A WritableComparable for ints. */
+/** A WritableComparable for matrix elements. */
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class ElementWritable implements WritableComparable<ElementWritable> {
@@ -58,7 +56,7 @@ public class ElementWritable implements WritableComparable<ElementWritable> {
     out.writeInt(col);
   }
 
-  /** Returns true iff <code>o</code> is a IntWritable with the same value. */
+  /** Returns true iff <code>o</code> is a ElementWritable with the same value. */
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof ElementWritable))

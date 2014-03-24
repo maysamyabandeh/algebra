@@ -68,13 +68,12 @@ public class Sequence2MatrixFormatJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath,
       Path matrixOutputPath) throws IOException, InterruptedException,
       ClassNotFoundException {
+    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath, "seq2mtx");
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJarByClass(Sequence2MatrixFormatJob.class);
     job.setJobName(Sequence2MatrixFormatJob.class.getSimpleName());
-    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
-
-    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPath}, "seq2mtx");
 
     matrixInputPath = fs.makeQualified(matrixInputPath);
     matrixOutputPath = fs.makeQualified(matrixOutputPath);

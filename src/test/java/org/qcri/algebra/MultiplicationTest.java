@@ -187,7 +187,7 @@ public class MultiplicationTest extends Assert {
     CompositeDMJ job = new CompositeDMJ();
     Path outPath =
         new Path(output, CompositeDMJ.class.getName() + label);
-    job.run(conf, aPath, bPath, outPath, rowsA, aSquarePath, colsA, colsA, 0, 0, 1);
+    job.run(conf, aPath, bPath, outPath, rowsA, aSquarePath, colsA, colsA, 0, 0);
     verifyCompositeDMJ(outPath);
   }
 

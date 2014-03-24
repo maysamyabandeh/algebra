@@ -18,6 +18,7 @@ import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -30,14 +31,15 @@ import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
 
 /**
- * (A ./ (A*MEM+A.*a2+a1)) .* B Approach: Broadcast of MEM and Dynamic Mapside
- * join of B
+ * (A ./ (A*MEM+A.*a2+a1)) .* B:
+ * 
+ * Approach: Broadcast of MEM and Dynamic Mapside join of B
  */
 public class CompositeDMJ extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(CompositeDMJ.class);
 
-  public static final String MAPDIRMATRIX = "mapDirMatrix";
-  
+  public static final String MAPDIRMATRIX = "CompostiteDMJ.MapDirMatrix";
+
   public static final String MATRIXINMEMORY = "matrixInMemory";
   public static final String MATRIXINMEMORYROWS = "memRows";
   public static final String MATRIXINMEMORYCOLS = "memCols";
@@ -57,7 +59,7 @@ public class CompositeDMJ extends AbstractJob {
     addOutputOption();
     addOption("numColsAt", "nca",
         "Number of columns of the first input matrix", true);
-    addOption("atMatrix", "atMatrix", "The first matrix, transposed");
+    addOption("aMatrix", "aMatrix", "The first matrix");
     addOption("bMatrix", "bMatrix", "The second matrix");
     addOption(MATRIXINMEMORY, "times",
         "The name of the file that contains the matrix that fits into memory");
@@ -68,36 +70,26 @@ public class CompositeDMJ extends AbstractJob {
       return -1;
     }
 
-    Path aPath = new Path(getOption("atMatrix"));
+    Path aPath = new Path(getOption("aMatrix"));
     Path bPath = new Path(getOption("bMatrix"));
-    int aCols = Integer.parseInt(getOption("numColsAt"));
+    int aCols = Integer.parseInt(getOption("numColsA"));
 
     String inMemMatrixFileName = getOption(MATRIXINMEMORY);
     int inMemMatrixNumRows = Integer.parseInt(getOption(MATRIXINMEMORYROWS));
     int inMemMatrixNumCols = Integer.parseInt(getOption(MATRIXINMEMORYCOLS));
 
     run(getConf(), aPath, bPath, getOutputPath(), aCols, inMemMatrixFileName,
-        inMemMatrixNumRows, inMemMatrixNumCols, 0f, 0f, 1);
+        inMemMatrixNumRows, inMemMatrixNumCols, 0f, 0f);
     return 0;
   }
 
   /**
    * Refer to {@link CompositeDMJ} for further details.
-   * 
-   * @param conf the initial configuration
-   * @param A transpose of matrix A
-   * @param B matrix B
-   * @param label the label for the output directory
-   * @param numberOfJobs the hint for the desired number of parallel jobs
-   * @return AxB wrapped in a DistributedRowMatrix object
-   * @throws IOException
-   * @throws InterruptedException
-   * @throws ClassNotFoundException
    */
   public static DistributedRowMatrix run(Configuration conf,
-      DistributedRowMatrix A, DistributedRowMatrix B, DistributedRowMatrix inMemC,   String label, float alpha1, float alpha2,
-      int numberOfJobs) throws IOException, InterruptedException,
-      ClassNotFoundException {
+      DistributedRowMatrix A, DistributedRowMatrix B,
+      DistributedRowMatrix inMemC, String label, float alpha1, float alpha2)
+      throws IOException, InterruptedException, ClassNotFoundException {
     log.info("running " + CompositeDMJ.class.getName());
     if (A.numRows() != B.numRows()) {
       throw new CardinalityException(A.numRows(), B.numRows());
@@ -116,7 +108,8 @@ public class CompositeDMJ extends AbstractJob {
     CompositeDMJ job = new CompositeDMJ();
     if (!fs.exists(outPath)) {
       job.run(conf, A.getRowPath(), B.getRowPath(), outPath, A.numRows(),
-          inMemC.getRowPath(), inMemC.numRows(), inMemC.numCols(), alpha1, alpha2, numberOfJobs);
+          inMemC.getRowPath(), inMemC.numRows(), inMemC.numCols(), alpha1,
+          alpha2);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
@@ -129,32 +122,15 @@ public class CompositeDMJ extends AbstractJob {
 
   public void run(Configuration conf, Path aPath, Path bPath,
       Path matrixOutputPath, int atCols, Path inMemCDir, int inMemCRows,
-      int inMemCCols, float alpha1, float alpha2, int numberOfJobs) throws IOException,
+      int inMemCCols, float alpha1, float alpha2) throws IOException,
       InterruptedException, ClassNotFoundException {
     run(conf, aPath, bPath, matrixOutputPath, atCols, inMemCDir.toString(),
-        inMemCRows, inMemCCols, alpha1, alpha2, numberOfJobs);
+        inMemCRows, inMemCCols, alpha1, alpha2);
   }
-  
-  /**
-   * Perform A x B, where A and B refer to the paths that contain matrices in
-   * {@link SequenceFileInputFormat}. The smaller of At and B must also conform
-   * with {@link MapDir} format. Refer to {@link CompositeDMJ} for further
-   * details.
-   * 
-   * @param conf the initial configuration
-   * @param aPath path to transpose of matrix A.
-   * @param bPath path to matrix B
-   * @param matrixOutputPath path to which AxB will be written
-   * @param atCols number of columns of At (rows of A)
-   * @param numberOfJobs the hint for the desired number of parallel jobs
-   * @throws IOException
-   * @throws InterruptedException
-   * @throws ClassNotFoundException
-   */
+
   public void run(Configuration conf, Path aPath, Path bPath,
-      Path matrixOutputPath, int atCols,
-      String inMemCStr, int inMemCRows, int inMemCCols, float alpha1, float alpha2,
-      int numberOfJobs) throws IOException,
+      Path matrixOutputPath, int atCols, String inMemCStr, int inMemCRows,
+      int inMemCCols, float alpha1, float alpha2) throws IOException,
       InterruptedException, ClassNotFoundException {
     FileSystem fs = FileSystem.get(aPath.toUri(), conf);
     long atSize = MapDir.du(aPath, fs);
@@ -165,42 +141,22 @@ public class CompositeDMJ extends AbstractJob {
     CompositeDMJ job = new CompositeDMJ();
     Job hjob;
     if (aIsMapDir)
-      hjob  =
-          job.run(conf, aPath, bPath,
-              matrixOutputPath, atCols, aIsMapDir, 
+      hjob =
+          job.run(conf, aPath, bPath, matrixOutputPath, atCols, aIsMapDir,
               inMemCStr, inMemCRows, inMemCCols, alpha1, alpha2);
     else
-      hjob  =
-      job.run(conf, bPath, aPath,
-          matrixOutputPath, atCols, aIsMapDir, 
-          inMemCStr, inMemCRows, inMemCCols, alpha1, alpha2);
+      hjob =
+          job.run(conf, bPath, aPath, matrixOutputPath, atCols, aIsMapDir,
+              inMemCStr, inMemCRows, inMemCCols, alpha1, alpha2);
     boolean res = hjob.waitForCompletion(true);
     if (!res)
       throw new IOException("Job failed! ");
   }
 
-  /**
-   * Perform A x B, where At and B refer to the paths that contain matrices in
-   * {@link SequenceFileInputFormat}. One of At and B must also conform with
-   * {@link MapDir} format. Refer to {@link CompositeDMJ} for further details.
-   * 
-   * @param conf the initial configuration
-   * @param mapDirPath path to the matrix in {@link MapDir} format
-   * @param matrixInputPaths the list of paths to matrix input partitions over
-   *          which we iterate
-   * @param matrixOutputPath path to which AxB will be written
-   * @param atCols number of columns of At (rows of A)
-   * @param aIsMapDir is A chosen to be loaded as MapDir
-   * @param numberOfJobs the hint for the desired number of parallel jobs
-   * @return the running job
-   * @throws IOException
-   * @throws InterruptedException
-   * @throws ClassNotFoundException
-   */
   public Job run(Configuration conf, Path mapDirPath, Path matrixInputPaths,
-      Path matrixOutputPath, int atCols, boolean aIsMapDir, 
-      String inMemCStr, int inMemCRows, int inMemCCols, float alpha1, float alpha2) throws IOException,
-      InterruptedException, ClassNotFoundException {
+      Path matrixOutputPath, int atCols, boolean aIsMapDir, String inMemCStr,
+      int inMemCRows, int inMemCCols, float alpha1, float alpha2)
+      throws IOException, InterruptedException, ClassNotFoundException {
     conf.set(MATRIXINMEMORY, inMemCStr);
     conf.setInt(MATRIXINMEMORYROWS, inMemCRows);
     conf.setInt(MATRIXINMEMORYCOLS, inMemCCols);
@@ -209,14 +165,15 @@ public class CompositeDMJ extends AbstractJob {
     conf.setFloat(ALPHA2, alpha2);
 
     FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
-    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPaths}, "compositedmj");
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPaths, "compositedmj");
 
     conf.set(MAPDIRMATRIX, mapDirPath.toString());
     conf.setBoolean(AISMAPDIR, aIsMapDir);
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJarByClass(CompositeDMJ.class);
-    job.setJobName(CompositeDMJ.class.getSimpleName() + "-" + matrixOutputPath.getName());
+    job.setJobName(CompositeDMJ.class.getSimpleName() + "-"
+        + matrixOutputPath.getName());
     matrixOutputPath = fs.makeQualified(matrixOutputPath);
 
     matrixInputPaths = fs.makeQualified(matrixInputPaths);
@@ -240,24 +197,14 @@ public class CompositeDMJ extends AbstractJob {
     return job;
   }
 
-  /**
-   * Iterate over the input vectors, do an outer join with the corresponding
-   * vector from the other matrix, and write the resulting partial matrix to the
-   * reducers.
-   * 
-   * @author myabandeh
-   * 
-   */
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
     private MapDir otherMapDir;
     private boolean aIsMapDir;
     private VectorWritable otherVectorw = new VectorWritable();
     private VectorWritable outVectorw = new VectorWritable();
-    private IntWritable outIntw = new IntWritable();
     private float alpha1;
     private float alpha2;
-    
     private DenseMatrix inMemC;
     private DenseVector resVector = null;
 
@@ -269,12 +216,14 @@ public class CompositeDMJ extends AbstractJob {
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);
       alpha1 = conf.getFloat(ALPHA1, 0f);
       alpha2 = conf.getFloat(ALPHA2, 0f);
-      
+
       Path inMemMatrixPath = new Path(conf.get(MATRIXINMEMORY));
       int inMemMatrixNumRows = conf.getInt(MATRIXINMEMORYROWS, 0);
       int inMemMatrixNumCols = conf.getInt(MATRIXINMEMORYCOLS, 0);
-      inMemC = AlgebraCommon.mapDirToDenseMatrix(inMemMatrixPath,
-          inMemMatrixNumRows, inMemMatrixNumCols, conf);
+      inMemC =
+          AlgebraCommon.mapDirToDenseMatrix(inMemMatrixPath,
+              inMemMatrixNumRows, inMemMatrixNumCols, conf);
+      resVector = new DenseVector(inMemC.numCols());
     }
 
     @Override
@@ -289,18 +238,41 @@ public class CompositeDMJ extends AbstractJob {
       }
       Vector mapDirVector = otherVectorw.get();
       if (aIsMapDir)
-        multiplyWithInMem(mapDirVector);
+        composite(mapDirVector, normalInput, context);
       else
-        multiplyWithInMem(normalInput);
-      dotDivide(index, mapDirVector, normalInput, resVector, context);
-      outVectorw.set(resVector);
+        composite(normalInput, mapDirVector, context);
+      outVectorw.set(new SequentialAccessSparseVector(resVector));
       context.write(index, outVectorw);
     }
-    
-    public void multiplyWithInMem(Vector row)
-        throws IOException, InterruptedException {
-      if (resVector == null)
-        resVector = new DenseVector(inMemC.numCols());
+
+    // a . b / c
+    private void composite(Vector aVector, Vector bVector, Context context) {
+      for (int i = 0; i < aVector.size(); i++) {
+        double ai = aVector.getQuick(i);
+        if (ai ==0) {
+          resVector.setQuick(i, 0);
+          continue;
+        }
+        double bi = bVector.getQuick(i);
+        if (bi ==0) {
+          resVector.setQuick(i, 0);
+          continue;
+        }
+        
+        Double preVal = aVector.dot(inMemC.viewColumn(i));
+        double ci = preVal + alpha2 * ai + alpha1;
+
+        double res = 0;
+        if (ci != 0)
+          res = ai * bi / ci;
+        else if (ai != 0)
+          context.getCounter("Error", "NaN").increment(1);
+        resVector.setQuick(i, res);
+      }
+    }
+
+    public void multiplyWithInMem(Vector row) throws IOException,
+        InterruptedException {
       AlgebraCommon.vectorTimesMatrix(row, inMemC, resVector);
       for (int i = 0; i < resVector.size(); i++) {
         double preVal = resVector.getQuick(i);
@@ -309,15 +281,18 @@ public class CompositeDMJ extends AbstractJob {
       }
     }
 
-    //TODO: what if the vector is sparse?
-    void dotDivide(IntWritable index, Vector aVector, Vector bVector, Vector cVector, Context context)
+    // TODO: what if the vector is sparse?
+    void dotDivideByResVector(Vector aVector, Vector bVector, Context context)
         throws IOException, InterruptedException {
+      // I do a full iteration here since I have to zero the un-initializied
+      // resVector
       for (int i = 0; i < aVector.size(); i++) {
-        double ai = aVector.getQuick(i); 
-        double ci = cVector.getQuick(i);
+        double ai = aVector.getQuick(i);
+        double bi = bVector.getQuick(i);
+        double ci = resVector.getQuick(i);
         double res = 0;
         if (ci != 0)
-          res = ai * bVector.getQuick(i) / ci;
+          res = ai * bi / ci;
         else if (ai != 0)
           context.getCounter("Error", "NaN").increment(1);
 

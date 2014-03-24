@@ -32,7 +32,6 @@ import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
@@ -40,23 +39,17 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.AlgebraCommon;
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
-import com.myabandeh.algebra.matrix.format.RowPartitioner.IntRowPartitioner;
 
 /**
+ * Xt * X
  * @author maysam yabandeh
  */
 public class XtXJob extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(XtXJob.class);
-  public static final String MATRIXINMEMORY = "matrixInMemory";
-  public static final String MATRIXINMEMORYROWS = "memRows";
-  public static final String MATRIXINMEMORYCOLS = "memCols";
-  /**
-   * The option specifies the path to Xm Vector
-   */
-  public static final String XMPATH = "xmPath";
+  public static final String MATRIXCOLS = "matrix.num.cols";
+//  public static final String XMPATH = "xmPath";
 
   @Override
   public int run(String[] strings) throws Exception {
@@ -66,20 +59,19 @@ public class XtXJob extends AbstractJob {
   public DistributedRowMatrix computeXtX(DistributedRowMatrix xMatrix,
       Path tmpPath, Configuration conf, String id)
       throws IOException, InterruptedException, ClassNotFoundException {
-    Vector xm = new DenseVector(xMatrix.numCols());
-    return computeXtX(xMatrix, xm, tmpPath, conf, id);
+    return computeXtX(xMatrix, null, tmpPath, conf, id);
   }
 
   public DistributedRowMatrix computeXtX(DistributedRowMatrix xMatrix,
       Vector xm, Path tmpPath, Configuration conf, String id)
       throws IOException, InterruptedException, ClassNotFoundException {
     Path outPath = new Path(tmpPath, "XtX-" + id);
-    Path xmPath =
-        AlgebraCommon.toDistributedVector(xm, tmpPath, "xm-XtXJob" + id, conf);
+//    Path xmPath =
+//        AlgebraCommon.toDistributedVector(xm, tmpPath, "xm-XtXJob" + id, conf);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
     if (!fs.exists(outPath)) {
-      run(conf, xMatrix.getRowPath(), xMatrix.numRows(), xMatrix.numCols(),
-          xmPath.toString(), outPath);
+      run(conf, xMatrix.getRowPath(), xMatrix.numCols(), null,
+          outPath);
     } else {
       log.warn("----------- Skip XtXjob - already exists: " + outPath);
     }
@@ -91,15 +83,15 @@ public class XtXJob extends AbstractJob {
     return xtx;
   }
 
-  public void run(Configuration conf, Path matrixInputPath, int numRows,
-      int numCols, String xmPath, Path matrixOutputPath) throws IOException,
+  public void run(Configuration conf, Path matrixInputPath, int numCols,
+      String xmPath, Path matrixOutputPath) throws IOException,
       InterruptedException, ClassNotFoundException {
-    conf.setInt(MATRIXINMEMORYROWS, numRows);
-    conf.setInt(MATRIXINMEMORYCOLS, numCols);
-    conf.set(XMPATH, xmPath);
+    conf.setInt(MATRIXCOLS, numCols);
+//    conf.set(XMPATH, xmPath);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPath}, "xtx");
 
+    @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJobName("XtXJob-" + matrixOutputPath.getName());
     job.setJarByClass(XtXJob.class);
@@ -130,34 +122,31 @@ public class XtXJob extends AbstractJob {
 
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-    // input arguments
-    private Vector xm;
+//    private Vector xm;
+    int numCols;
     // developing variables
     private DenseMatrix xtxMatrix;
 
     @Override
     public void setup(Context context) throws IOException {
       Configuration conf = context.getConfiguration();
-      int inMemMatrixNumRows = conf.getInt(MATRIXINMEMORYROWS, 0);
-      int inMemMatrixNumCols = conf.getInt(MATRIXINMEMORYCOLS, 0);
-      Path xmPath = new Path(conf.get(XMPATH));
-      try {
-        xm = AlgebraCommon.toDenseVector(xmPath, conf);
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
+      numCols = conf.getInt(MATRIXCOLS, 0);
+//      Path xmPath = new Path(conf.get(XMPATH));
+//      try {
+//        xm = AlgebraCommon.toDenseVector(xmPath, conf);
+//      } catch (IOException e) {
+//        e.printStackTrace();
+//      }
+      xtxMatrix = new DenseMatrix(numCols, numCols);
     }
 
     /**
-     * Perform in-memory matrix multiplication xi = yi' * MEM
+     * Perform in-memory vector multiplication xtx += xi' * xi
      */
     @Override
     public void map(IntWritable r, VectorWritable v, Context context)
         throws IOException, InterruptedException {
       Vector xi = v.get();
-      if (xtxMatrix == null) {
-        xtxMatrix = new DenseMatrix(xm.size(), xm.size());
-      }
       xtx(xi, xtxMatrix);
     }
 
@@ -174,43 +163,22 @@ public class XtXJob extends AbstractJob {
     }
 
     private void xtx(Vector xi,DenseMatrix resMatrix) {
-      Iterator<Vector.Element> nonZeroElements = xi.nonZeroes().iterator();
-      while (nonZeroElements.hasNext()) {
-        Vector.Element e = nonZeroElements.next();
+      Iterator<Vector.Element> rowIterator = xi.nonZeroes().iterator();
+      while (rowIterator.hasNext()) {
+        Vector.Element e = rowIterator.next();
         int xRow = e.index();
-        double xScale = e.get();
+        double xScale = e.get(); // - xm[i]
         Iterator<Vector.Element> colIterator = xi.nonZeroes().iterator();
         while (colIterator.hasNext()) {
           Vector.Element colElmnt = colIterator.next();
           int xCol = colElmnt.index();
-          double centeredValue = colElmnt.get();
+          double centeredValue = colElmnt.get(); // - xm[i]
           double currValue = resMatrix.getQuick(xRow, xCol);
           currValue += centeredValue * xScale;
-//          if (Double.isNaN(currValue))
-//            System.out.println("NaN is found r: " + r + " xRow: " + xRow + " xCol: " + xCol + " xi.getQuick(xCol)");
           resMatrix.setQuick(xRow, xCol, currValue);
         }
       }
     }
-/*
-    private void xtx(Vector xi, Vector xm, DenseMatrix resMatrix) {
-      int xSize = xi.size();
-      Iterator<Vector.Element> nonZeroElements = xi.nonZeroes().iterator();
-      while (nonZeroElements.hasNext()) {
-        Vector.Element e = nonZeroElements.next();
-        int xRow = e.index();
-        double xScale = e.get();
-        for (int xCol = 0; xCol < xSize; xCol++) {
-          double centeredValue = xi.getQuick(xCol) - xm.getQuick(xCol);
-          double currValue = resMatrix.getQuick(xRow, xCol);
-          currValue += centeredValue * xScale;
-//          if (Double.isNaN(currValue))
-//            System.out.println("NaN is found r: " + r + " xRow: " + xRow + " xCol: " + xCol + " xi.getQuick(xCol)");
-          resMatrix.setQuick(xRow, xCol, currValue);
-        }
-      }
-    }
-  */
   }
 
   public static class MyReducer extends
@@ -219,17 +187,13 @@ public class XtXJob extends AbstractJob {
     VectorWritable vw = new VectorWritable();
 
     @Override
-    public void setup(Context context) throws IOException {
-    }
-
-    @Override
     public void reduce(IntWritable key, Iterable<VectorWritable> vectors,
         Context context) throws IOException, InterruptedException {
       Iterator<VectorWritable> it = vectors.iterator();
       if (!it.hasNext()) {
         return;
       }
-      // Reduce YtX
+      // Reduce XtX
       Vector accumulator = it.next().get();
       while (it.hasNext()) {
         Vector row = it.next().get();

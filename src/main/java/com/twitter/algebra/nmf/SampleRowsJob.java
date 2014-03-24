@@ -15,10 +15,6 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.mahout.common.AbstractJob;
-import org.apache.mahout.math.CardinalityException;
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.DenseVector;
-import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
@@ -26,7 +22,12 @@ import org.slf4j.LoggerFactory;
 
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 
-
+/**
+ * Sample rows of a matrix
+ * 
+ * @author myabandeh
+ * 
+ */
 public class SampleRowsJob extends AbstractJob {
   private static final Logger log = LoggerFactory
       .getLogger(SampleRowsJob.class);
@@ -37,8 +38,7 @@ public class SampleRowsJob extends AbstractJob {
   public int run(String[] strings) throws Exception {
     addInputOption();
     addOutputOption();
-    addOption(SAMPLERATE, "rate",
-        "samperate");
+    addOption(SAMPLERATE, "rate", "samperate");
     Map<String, List<String>> parsedArgs = parseArguments(strings);
     if (parsedArgs == null) {
       return -1;
@@ -61,23 +61,26 @@ public class SampleRowsJob extends AbstractJob {
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
-    DistributedRowMatrix distRes = new DistributedRowMatrix(outPath,
-        A.getOutputTempPath(), A.numRows(), A.numCols());
+    DistributedRowMatrix distRes =
+        new DistributedRowMatrix(outPath, A.getOutputTempPath(), A.numRows(),
+            A.numCols());
     distRes.setConf(conf);
     return distRes;
   }
 
   public void run(Configuration conf, Path matrixInputPath,
-      Path matrixOutputPath,float sampleRate) throws IOException, InterruptedException,
-      ClassNotFoundException {
+      Path matrixOutputPath, float sampleRate) throws IOException,
+      InterruptedException, ClassNotFoundException {
     conf.setFloat(SAMPLERATE, sampleRate);
+    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath,
+        "samplerows");
+
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJarByClass(SampleRowsJob.class);
-    job.setJobName(SampleRowsJob.class.getSimpleName() + "-" + matrixOutputPath.getName());
-    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
-
-    NMFCommon.setNumberOfMapSlots(conf, fs, new Path[] {matrixInputPath}, "samplerows");
+    job.setJobName(SampleRowsJob.class.getSimpleName() + "-"
+        + matrixOutputPath.getName());
 
     matrixInputPath = fs.makeQualified(matrixInputPath);
     matrixOutputPath = fs.makeQualified(matrixOutputPath);
@@ -86,14 +89,12 @@ public class SampleRowsJob extends AbstractJob {
     job.setInputFormatClass(SequenceFileInputFormat.class);
     FileOutputFormat.setOutputPath(job, matrixOutputPath);
     job.setMapperClass(MyMapper.class);
-    
+
     job.setNumReduceTasks(0);
     job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
 
-    // since we do not use reducer, to get total order, the map output files has
-    // to be renamed after this function returns: {@link AlgebraCommon#fixPartitioningProblem}
     job.submit();
     boolean res = job.waitForCompletion(true);
     if (!res)
@@ -102,7 +103,7 @@ public class SampleRowsJob extends AbstractJob {
 
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-    Random rand = new Random(0);//all mappers start with the same seed
+    Random rand = new Random(0);// all mappers start with the same seed
     private float sampleRate;
 
     @Override
@@ -117,45 +118,20 @@ public class SampleRowsJob extends AbstractJob {
       if (pass(r.get()))
         context.write(r, v);
     }
-    
+
     int lastIndex = -1;
+
     boolean pass(int index) {
       float selectChance = 0;
-      //TODO: assume that lastIndex < index
+      // TODO: assume that lastIndex < index
       while (lastIndex < index) {
         lastIndex++;
         selectChance = rand.nextFloat();
       }
-      //lastIndex = index
+      // lastIndex = index
       return (selectChance <= sampleRate);
     }
 
   }
-  
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
