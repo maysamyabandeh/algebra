@@ -140,32 +140,35 @@ public class AtB_DMJ extends AbstractJob {
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
    * @param bCols
-   * @param colsPerpartition
+   * @param colsPerPartition
    * @param useInMemCombiner
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public void run(Configuration conf, Path atPath, Path bPath,
-      Path matrixOutputPath, int atCols, int bCols, int colsPerpartition,
+      Path matrixOutputPath, int atCols, int bCols, int colsPerPartition,
       boolean useInMemCombiner) throws IOException, InterruptedException,
       ClassNotFoundException {
-    FileSystem fs = FileSystem.get(atPath.toUri(), conf);
-    long atSize = MapDir.du(atPath, fs);
-    long bSize = MapDir.du(bPath, fs);
-    log.info("Choosing the smaller matrix: atSize: " + atSize + " bSize: "
-        + bSize);
-    boolean aIsMapDir = atSize < bSize;
+    boolean aIsMapDir = true;
+    if (bCols == colsPerPartition) {// if we do not use col partitioning on B
+      FileSystem fs = FileSystem.get(atPath.toUri(), conf);
+      long atSize = MapDir.du(atPath, fs);
+      long bSize = MapDir.du(bPath, fs);
+      log.info("Choosing the smaller matrix: atSize: " + atSize + " bSize: "
+          + bSize);
+      aIsMapDir = atSize < bSize;
+    }
     AtB_DMJ job = new AtB_DMJ();
     Job hjob;
     if (aIsMapDir)
       hjob =
           job.run(conf, atPath, bPath, matrixOutputPath, atCols, bCols,
-              colsPerpartition, aIsMapDir, useInMemCombiner);
+              colsPerPartition, aIsMapDir, useInMemCombiner);
     else
       hjob =
           job.run(conf, bPath, atPath, matrixOutputPath, atCols, bCols,
-              colsPerpartition, aIsMapDir, useInMemCombiner);
+              colsPerPartition, aIsMapDir, useInMemCombiner);
     boolean res = hjob.waitForCompletion(true);
     if (!res)
       throw new IOException("Job failed! ");
