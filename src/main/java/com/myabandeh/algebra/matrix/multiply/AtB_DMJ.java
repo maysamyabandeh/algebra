@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import com.myabandeh.algebra.matrix.format.MapDir;
 import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
 import com.myabandeh.algebra.matrix.format.RowPartitioner;
+import com.twitter.algebra.nmf.ColPartitionJob;
 import com.twitter.algebra.nmf.NMFCommon;
 
 /**
@@ -86,7 +87,7 @@ public class AtB_DMJ extends AbstractJob {
     Path bPath = new Path(getOption("bMatrix"));
     int atCols = Integer.parseInt(getOption("numColsAt"));
     int bCols = Integer.parseInt(getOption("numColsB"));
-    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, bCols, true);
+    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, 1, true);
     return 0;
   }
 
@@ -97,7 +98,7 @@ public class AtB_DMJ extends AbstractJob {
    * @param conf the initial configuration
    * @param At transpose of matrix A
    * @param B matrix B
-   * @param colsPerPartition number of columns per column-partition
+   * @param numColPartitionsB TODO
    * @param label the label for the output directory
    * @param useInMemCombiner
    * @return AxB wrapped in a DistributedRowMatrix object
@@ -106,7 +107,7 @@ public class AtB_DMJ extends AbstractJob {
    * @throws ClassNotFoundException
    */
   public static DistributedRowMatrix run(Configuration conf,
-      DistributedRowMatrix At, DistributedRowMatrix B, int colsPerPartition,
+      DistributedRowMatrix At, DistributedRowMatrix B, int numColPartitionsB,
       String label, boolean useInMemCombiner) throws IOException,
       InterruptedException, ClassNotFoundException {
     log.info("running " + AtB_DMJ.class.getName());
@@ -118,7 +119,7 @@ public class AtB_DMJ extends AbstractJob {
     AtB_DMJ job = new AtB_DMJ();
     if (!fs.exists(outPath)) {
       job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
-          B.numCols(), colsPerPartition, useInMemCombiner);
+          B.numCols(), numColPartitionsB,  useInMemCombiner);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
@@ -140,18 +141,18 @@ public class AtB_DMJ extends AbstractJob {
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
    * @param bCols
-   * @param colsPerPartition
+   * @param numColPartitionsB TODO
    * @param useInMemCombiner
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public void run(Configuration conf, Path atPath, Path bPath,
-      Path matrixOutputPath, int atCols, int bCols, int colsPerPartition,
+      Path matrixOutputPath, int atCols, int bCols, int numColPartitionsB,
       boolean useInMemCombiner) throws IOException, InterruptedException,
       ClassNotFoundException {
     boolean aIsMapDir = true;
-    if (bCols == colsPerPartition) {// if we do not use col partitioning on B
+    if (1 == numColPartitionsB) {// if we do not use col partitioning on B
       FileSystem fs = FileSystem.get(atPath.toUri(), conf);
       long atSize = MapDir.du(atPath, fs);
       long bSize = MapDir.du(bPath, fs);
@@ -159,6 +160,8 @@ public class AtB_DMJ extends AbstractJob {
           + bSize);
       aIsMapDir = atSize < bSize;
     }
+    int colsPerPartition =
+        ColPartitionJob.getColPartitionSize(bCols, numColPartitionsB);
     AtB_DMJ job = new AtB_DMJ();
     Job hjob;
     if (aIsMapDir)

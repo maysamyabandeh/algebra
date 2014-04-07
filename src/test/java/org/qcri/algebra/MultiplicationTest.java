@@ -212,51 +212,56 @@ public class MultiplicationTest extends Assert {
   @Test
   public void testDMJ() throws Exception {
     //without column partition
-    testDMJ(atDensePath, bDensePath, "Dense", 1, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, true);
-    testDMJ(atDensePath, bDensePath, "Dense", 1, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, false);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 1, false);
 
     //with column partition
-    testDMJ(atDensePath, bDensePath, "Dense", 2, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, true);
-    testDMJ(atDensePath, bDensePath, "Dense", 2, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, false);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 2, false);
     
     //with column partition larger than available columns
-    testDMJ(atDensePath, bDensePath, "Dense", colsB + 1, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", colsB + 1, true);
-    testDMJ(atDensePath, bDensePath, "Dense", colsB + 1, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse", colsB + 1, false);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, colsB + 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, colsB + 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, colsB + 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, colsB + 1, false);
 
     //with column partition, #reducers > col partitions
     int nReducers = 2 * 3;
     NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, true);
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, false);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, false);
     
     //with column partition, #reducers > col partitions, but #reducers/#colPart is not a natural number
     nReducers = 2 + 1;
     NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, true);
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, false);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, false);
 }
 
-  public void testDMJ(Path atPath, Path bPath, String label, int nColPartitions, boolean useInMemCombiner)
+  public void testDMJ(Path atPath, Path bPath, String label,
+      int nColPartitionsOfAt, int nColPartitionsOfB, boolean useInMemCombiner)
       throws Exception {
+    if (nColPartitionsOfB != 1 && nColPartitionsOfAt != 1)
+      throw new Exception("DMJ input error: only one of At and B can be column partitioned!");
     AtB_DMJ job = new AtB_DMJ();
-    label = label + nColPartitions + useInMemCombiner;
+    label = label + nColPartitionsOfB + useInMemCombiner;
     Path outPath =
         new Path(output, AtB_DMJ.class.getName() + label);
-    final int colsPerPartition =
-        ColPartitionJob.getColPartitionSize(colsB, nColPartitions);
-    if (nColPartitions != 1) 
-      bPath = colPartition(bPath, rowsB, colsB, nColPartitions, label);
-    job.run(conf, atPath, bPath, outPath, rowsA, colsB, colsPerPartition, useInMemCombiner);
+    final int colsPerPartitionAt =
+        ColPartitionJob.getColPartitionSize(rowsA, nColPartitionsOfAt);
+    if (nColPartitionsOfAt != 1) 
+      atPath = colPartition(atPath, colsA, rowsA, nColPartitionsOfAt, label);
+    else if (nColPartitionsOfB != 1) 
+      bPath = colPartition(bPath, rowsB, colsB, nColPartitionsOfB, label);
+    job.run(conf, atPath, bPath, outPath, rowsA, colsB, nColPartitionsOfB, useInMemCombiner);
     verifyProduct(outPath);
   }
   

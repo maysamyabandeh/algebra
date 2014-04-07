@@ -107,9 +107,6 @@ public class NMFDriver extends AbstractJob {
     DistributedRowMatrix distYt =
         DistRndMatrixJob.random(conf, nCols, k, getTempPath(), "Yt");
 
-    final int colsPerPartition =
-        ColPartitionJob.getColPartitionSize(k, nColPartitions);
-
     log.info("writing A");
     DistributedRowMatrix distA =
         DistRndMatrixJob.random(conf, nRows, k, getTempPath(), "A");
@@ -123,7 +120,7 @@ public class NMFDriver extends AbstractJob {
           ColPartitionJob.partition(distYt, conf, "Ytcol" + round,
               nColPartitions);
       DistributedRowMatrix distXYt =
-          AtB_DMJ.run(conf, distXt, distYtCol, colsPerPartition,
+          AtB_DMJ.run(conf, distXt, distYtCol, nColPartitions,
               "XYt" + round, true);
 
       DistributedRowMatrix distAdotXYtdivAYYt =
@@ -143,7 +140,7 @@ public class NMFDriver extends AbstractJob {
           ColPartitionJob.partition(distA, conf, "Acol" + round,
               nColPartitions);
       DistributedRowMatrix distXtA =
-          AtB_DMJ.run(conf, distX, distACol, colsPerPartition, "XtA" + round,
+          AtB_DMJ.run(conf, distX, distACol, nColPartitions, "XtA" + round,
               true);
       DistributedRowMatrix distYtdotXtAdivYtAtA =
           CompositeDMJ.run(conf, distYt, distXtA, distAtA, "Yt.XtAdYtAtA"
