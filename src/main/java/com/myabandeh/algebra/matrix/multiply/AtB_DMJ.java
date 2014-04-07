@@ -87,7 +87,7 @@ public class AtB_DMJ extends AbstractJob {
     Path bPath = new Path(getOption("bMatrix"));
     int atCols = Integer.parseInt(getOption("numColsAt"));
     int bCols = Integer.parseInt(getOption("numColsB"));
-    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, 1, true);
+    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, 1, 1, true);
     return 0;
   }
 
@@ -98,7 +98,8 @@ public class AtB_DMJ extends AbstractJob {
    * @param conf the initial configuration
    * @param At transpose of matrix A
    * @param B matrix B
-   * @param numColPartitionsB TODO
+   * @param numColPartitionsAt 
+   * @param numColPartitionsB 
    * @param label the label for the output directory
    * @param useInMemCombiner
    * @return AxB wrapped in a DistributedRowMatrix object
@@ -107,19 +108,20 @@ public class AtB_DMJ extends AbstractJob {
    * @throws ClassNotFoundException
    */
   public static DistributedRowMatrix run(Configuration conf,
-      DistributedRowMatrix At, DistributedRowMatrix B, int numColPartitionsB,
-      String label, boolean useInMemCombiner) throws IOException,
+      DistributedRowMatrix At, DistributedRowMatrix B, int numColPartitionsAt,
+      int numColPartitionsB, String label, boolean useInMemCombiner) throws IOException,
       InterruptedException, ClassNotFoundException {
     log.info("running " + AtB_DMJ.class.getName());
-    if (At.numRows() != B.numRows()) {
+    if (At.numRows() != B.numRows())
       throw new CardinalityException(At.numRows(), B.numRows());
-    }
+    if (numColPartitionsAt != 1 && numColPartitionsB != 1)
+      throw new IOException("AtB_DMJ: not both At and B can be column partitioned!");
     Path outPath = new Path(At.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
     AtB_DMJ job = new AtB_DMJ();
     if (!fs.exists(outPath)) {
       job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
-          B.numCols(), numColPartitionsB,  useInMemCombiner);
+          B.numCols(), numColPartitionsAt,  numColPartitionsB, useInMemCombiner);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
@@ -141,15 +143,16 @@ public class AtB_DMJ extends AbstractJob {
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
    * @param bCols
-   * @param numColPartitionsB TODO
+   * @param numColPartitionsAt
+   * @param numColPartitionsB 
    * @param useInMemCombiner
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public void run(Configuration conf, Path atPath, Path bPath,
-      Path matrixOutputPath, int atCols, int bCols, int numColPartitionsB,
-      boolean useInMemCombiner) throws IOException, InterruptedException,
+      Path matrixOutputPath, int atCols, int bCols, int numColPartitionsAt,
+      int numColPartitionsB, boolean useInMemCombiner) throws IOException, InterruptedException,
       ClassNotFoundException {
     boolean aIsMapDir = true;
     if (1 == numColPartitionsB) {// if we do not use col partitioning on B

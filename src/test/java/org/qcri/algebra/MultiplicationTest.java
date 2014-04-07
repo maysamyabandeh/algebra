@@ -255,13 +255,11 @@ public class MultiplicationTest extends Assert {
     label = label + nColPartitionsOfB + useInMemCombiner;
     Path outPath =
         new Path(output, AtB_DMJ.class.getName() + label);
-    final int colsPerPartitionAt =
-        ColPartitionJob.getColPartitionSize(rowsA, nColPartitionsOfAt);
     if (nColPartitionsOfAt != 1) 
       atPath = colPartition(atPath, colsA, rowsA, nColPartitionsOfAt, label);
     else if (nColPartitionsOfB != 1) 
       bPath = colPartition(bPath, rowsB, colsB, nColPartitionsOfB, label);
-    job.run(conf, atPath, bPath, outPath, rowsA, colsB, nColPartitionsOfB, useInMemCombiner);
+    job.run(conf, atPath, bPath, outPath, rowsA, colsB, nColPartitionsOfAt, nColPartitionsOfB, useInMemCombiner);
     verifyProduct(outPath);
   }
   

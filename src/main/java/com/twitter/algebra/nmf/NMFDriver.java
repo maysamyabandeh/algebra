@@ -84,11 +84,11 @@ public class NMFDriver extends AbstractJob {
    * @param nRows
    * @param nCols
    * @param k
-   * @param nColPartitions
+   * @param nColPartitionsB
    * @throws Exception
    */
   private void run(Configuration conf, Path input, Path output, int nRows,
-      int nCols, int k, int nColPartitions) throws Exception {
+      int nCols, int k, int nColPartitionsB) throws Exception {
     log.info("reading X");
     DistributedRowMatrix distX =
         new DistributedRowMatrix(input, getTempPath(), nRows, nCols);
@@ -118,10 +118,10 @@ public class NMFDriver extends AbstractJob {
       distYYt = CombinerJob.run(conf, distYYt, "YYt-compact" + round);
       DistributedRowMatrix distYtCol =
           ColPartitionJob.partition(distYt, conf, "Ytcol" + round,
-              nColPartitions);
+              nColPartitionsB);
       DistributedRowMatrix distXYt =
-          AtB_DMJ.run(conf, distXt, distYtCol, nColPartitions,
-              "XYt" + round, true);
+          AtB_DMJ.run(conf, distXt, distYtCol, 1,
+              nColPartitionsB, "XYt" + round, true);
 
       DistributedRowMatrix distAdotXYtdivAYYt =
           CompositeDMJ.run(conf, distA, distXYt, distYYt, "A.XYtdAYYt" + round,
@@ -138,10 +138,10 @@ public class NMFDriver extends AbstractJob {
               + round);
       DistributedRowMatrix distACol =
           ColPartitionJob.partition(distA, conf, "Acol" + round,
-              nColPartitions);
+              nColPartitionsB);
       DistributedRowMatrix distXtA =
-          AtB_DMJ.run(conf, distX, distACol, nColPartitions, "XtA" + round,
-              true);
+          AtB_DMJ.run(conf, distX, distACol, 1, nColPartitionsB,
+              "XtA" + round, true);
       DistributedRowMatrix distYtdotXtAdivYtAtA =
           CompositeDMJ.run(conf, distYt, distXtA, distAtA, "Yt.XtAdYtAtA"
               + round, lambda1, lambda2);
