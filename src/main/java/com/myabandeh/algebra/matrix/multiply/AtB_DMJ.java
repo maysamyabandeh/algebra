@@ -155,26 +155,33 @@ public class AtB_DMJ extends AbstractJob {
       int numColPartitionsB, boolean useInMemCombiner) throws IOException, InterruptedException,
       ClassNotFoundException {
     boolean aIsMapDir = true;
-    if (1 == numColPartitionsB) {// if we do not use col partitioning on B
+    if (1 == numColPartitionsAt && 1 == numColPartitionsB) {// if we do not use col partitioning
       FileSystem fs = FileSystem.get(atPath.toUri(), conf);
       long atSize = MapDir.du(atPath, fs);
       long bSize = MapDir.du(bPath, fs);
       log.info("Choosing the smaller matrix: atSize: " + atSize + " bSize: "
           + bSize);
       aIsMapDir = atSize < bSize;
+    } else if (numColPartitionsAt != 1) {
+      aIsMapDir = false;
+    } else if (numColPartitionsB != 1) {
+      aIsMapDir = true;
     }
-    int colsPerPartition =
-        ColPartitionJob.getColPartitionSize(bCols, numColPartitionsB);
     AtB_DMJ job = new AtB_DMJ();
     Job hjob;
-    if (aIsMapDir)
+    if (aIsMapDir) {
+      int colsPerPartition =
+          ColPartitionJob.getColPartitionSize(bCols, numColPartitionsB);
       hjob =
           job.run(conf, atPath, bPath, matrixOutputPath, atCols, bCols,
               colsPerPartition, aIsMapDir, useInMemCombiner);
-    else
+    } else {
+      int colsPerPartition =
+          ColPartitionJob.getColPartitionSize(atCols, numColPartitionsAt);
       hjob =
           job.run(conf, bPath, atPath, matrixOutputPath, atCols, bCols,
               colsPerPartition, aIsMapDir, useInMemCombiner);
+    }
     boolean res = hjob.waitForCompletion(true);
     if (!res)
       throw new IOException("Job failed! ");
@@ -192,7 +199,7 @@ public class AtB_DMJ extends AbstractJob {
    * @param matrixOutputPath path to which AxB will be written
    * @param atCols number of columns of At (rows of A)
    * @param bCols
-   * @param colsPerPartition
+   * @param colsPerPartition cols per partition of the input matrix (whether At or B)
    * @param aIsMapDir is A chosen to be loaded as MapDir
    * @param useInMemCombiner
    * @param numberOfJobs the hint for the desired number of parallel jobs
@@ -263,7 +270,7 @@ public class AtB_DMJ extends AbstractJob {
     private VectorWritable outVectorw = new VectorWritable();
     private IntWritable outIntw = new IntWritable();
     int resultRows, resultCols;
-    int partitionCols;
+    int colsPerPartition;
 
     @Override
     public void setup(Context context) throws IOException {
@@ -271,20 +278,24 @@ public class AtB_DMJ extends AbstractJob {
       Path inMemMatrixPath = new Path(conf.get(MATRIXINMEMORY));
       resultRows = conf.getInt(RESULTROWS, Integer.MAX_VALUE);
       resultCols = conf.getInt(RESULTCOLS, Integer.MAX_VALUE);
-      partitionCols = conf.getInt(PARTITIONCOLS, Integer.MAX_VALUE);
+      colsPerPartition = conf.getInt(PARTITIONCOLS, Integer.MAX_VALUE);
       otherMapDir = new MapDir(conf, inMemMatrixPath);
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);
       boolean useInMemCombiner = conf.getBoolean(USEINMEMCOMBINER, true);
       if (useInMemCombiner) {
         try {
-          inMemCombiner = new InMemCombinerColPartitionB();
-          inMemCombiner.init(resultRows, partitionCols);
+          if (aIsMapDir) {
+            inMemCombiner = new InMemCombinerColPartitionB();
+            inMemCombiner.init(resultRows, colsPerPartition);
+          } else {
+            inMemCombiner = new InMemCombinerColPartitionAt();
+            inMemCombiner.init(colsPerPartition, resultCols);
+          }
         } catch (Exception e) {
           inMemCombiner = null;
           System.gc();
-          useInMemCombiner = false;
           System.err.println("Not enough mem for in memory combiner of size "
-              + resultRows * partitionCols);
+              + resultRows * colsPerPartition);
         }
       }
     }
@@ -334,6 +345,7 @@ public class AtB_DMJ extends AbstractJob {
       void dump(Context context) throws IOException;
     }
     
+    
     class InMemCombinerColPartitionB implements InMemCombiner {
       private double[] outValues;
       @Override
@@ -363,11 +375,11 @@ public class AtB_DMJ extends AbstractJob {
         IntWritable iw = new IntWritable();
         VectorWritable vw = new VectorWritable();
         RandomAccessSparseVector vector =
-            new RandomAccessSparseVector(resultCols, partitionCols);
+            new RandomAccessSparseVector(resultCols, colsPerPartition);
         for (int r = 0; r < resultRows; r++) {
           int index = rowcolToIndex(r, 0);
           boolean hasNonZero = false;
-          for (int c = 0; c < partitionCols; c++, index++) {
+          for (int c = 0; c < colsPerPartition; c++, index++) {
             double value = outValues[index];
             if (value != 0) {
               hasNonZero = true;
@@ -381,23 +393,89 @@ public class AtB_DMJ extends AbstractJob {
           try {
             context.write(iw, vw);
           } catch (InterruptedException e) {
-            context.getCounter("Error", "interrup").increment(1);
+            context.getCounter("Error", "interrupt").increment(1);
           }
-          vector = new RandomAccessSparseVector(resultCols, partitionCols);
+          vector = new RandomAccessSparseVector(resultCols, colsPerPartition);
         }
       }
 
       private int minGlobalCol = Integer.MIN_VALUE;
 
       private int globalToLocalCol(int col) {
-        int localCol = col % partitionCols;
+        int localCol = col % colsPerPartition;
         if (minGlobalCol == Integer.MIN_VALUE)
           minGlobalCol = col - localCol;
         return localCol;
       }
 
       private int rowcolToIndex(int row, int localCol) {
-        return row * partitionCols + localCol;
+        return row * colsPerPartition + localCol;
+      }
+    }
+
+    class InMemCombinerColPartitionAt implements InMemCombiner {
+      private double[] outValues;
+      @Override
+      public void init(int rows, int cols) {
+        outValues = new double[rows * cols];
+      }
+      
+      @Override
+      public void combine(int row, double scale, Vector bVector) {
+        Iterator<Vector.Element> it = bVector.nonZeroes().iterator();
+        while (it.hasNext()) {
+          Vector.Element e = it.next();
+          int localRow = globalToLocalRow(row);
+          int localIndex = rowcolToIndex(localRow, e.index());
+          outValues[localIndex] += scale * e.get();
+        }
+      }
+      
+      @Override
+      public void dump(Context context) throws IOException {
+        if (minGlobalRow == Integer.MIN_VALUE) {
+          //too many null values could indicate an error
+          context.getCounter("InMemCombiner", "nullValues").increment(1);
+          return;
+        }
+        IntWritable iw = new IntWritable();
+        VectorWritable vw = new VectorWritable();
+        RandomAccessSparseVector vector =
+            new RandomAccessSparseVector(resultCols, resultCols);
+        for (int r = 0; r < colsPerPartition; r++) {
+          int index = rowcolToIndex(r, 0);
+          boolean hasNonZero = false;
+          for (int c = 0; c < resultCols; c++, index++) {
+            double value = outValues[index];
+            if (value != 0) {
+              hasNonZero = true;
+              vector.set(c, value);
+            }
+          }
+          if (!hasNonZero)
+            continue;
+          iw.set(r + minGlobalRow);
+          vw.set(new SequentialAccessSparseVector(vector));
+          try {
+            context.write(iw, vw);
+          } catch (InterruptedException e) {
+            context.getCounter("Error", "interrupt").increment(1);
+          }
+          vector = new RandomAccessSparseVector(resultCols, resultCols);
+        }
+      }
+
+      private int minGlobalRow = Integer.MIN_VALUE;
+
+      private int globalToLocalRow(int row) {
+        int localRow = row % colsPerPartition;
+        if (minGlobalRow == Integer.MIN_VALUE)
+          minGlobalRow = row - localRow;
+        return localRow;
+      }
+
+      private int rowcolToIndex(int row, int localCol) {
+        return row * resultCols + localCol;
       }
     }
 

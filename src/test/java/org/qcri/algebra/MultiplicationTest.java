@@ -217,33 +217,63 @@ public class MultiplicationTest extends Assert {
     testDMJ(atDensePath, bDensePath, "Dense", 1, 1, false);
     testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 1, false);
 
-    //with column partition
+    //with column partition At
+    testDMJ(atDensePath, bDensePath, "Dense", 2, 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 2, 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, 1, false);
+
+    //with column partition B
     testDMJ(atDensePath, bDensePath, "Dense", 1, 2, true);
     testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 2, true);
     testDMJ(atDensePath, bDensePath, "Dense", 1, 2, false);
     testDMJ(atSparsePath, bSparsePath, "Sparse", 1, 2, false);
     
-    //with column partition larger than available columns
+    //with column partition larger than available columns At
+    testDMJ(atDensePath, bDensePath, "Dense", rowsA + 1, 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", rowsA + 1, 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", rowsA + 1, 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", rowsA + 1, 1, false);
+    
+    //with column partition larger than available columns B
     testDMJ(atDensePath, bDensePath, "Dense", 1, colsB + 1, true);
     testDMJ(atSparsePath, bSparsePath, "Sparse", 1, colsB + 1, true);
     testDMJ(atDensePath, bDensePath, "Dense", 1, colsB + 1, false);
     testDMJ(atSparsePath, bSparsePath, "Sparse", 1, colsB + 1, false);
 
-    //with column partition, #reducers > col partitions
+    //with column partition, #reducers > col partitions At
     int nReducers = 2 * 3;
     NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, true);
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, false);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_At" , 2, 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_At" , 2, 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_At" , 2, 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_At" , 2, 1, false);
     
-    //with column partition, #reducers > col partitions, but #reducers/#colPart is not a natural number
+    //with column partition, #reducers > col partitions B
+    nReducers = 2 * 3;
+    NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_B" , 1, 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_B" , 1, 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_B" , 1, 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_B" , 1, 2, false);
+    
+    // with column partition, #reducers > col partitions At, but
+    // #reducers/#colPart is not a natural number
     nReducers = 2 + 1;
     NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, true);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, true);
-    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 1, 2, false);
-    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 1, 2, false);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_At" , 2, 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_At" , 2, 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_At" , 2, 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_At" , 2, 1, false);
+    
+    // with column partition, #reducers > col partitions B, but
+    // #reducers/#colPart is not a natural number
+    nReducers = 2 + 1;
+    NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_B" , 1, 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_B" , 1, 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_B" , 1, 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_B" , 1, 2, false);
 }
 
   public void testDMJ(Path atPath, Path bPath, String label,
@@ -252,7 +282,7 @@ public class MultiplicationTest extends Assert {
     if (nColPartitionsOfB != 1 && nColPartitionsOfAt != 1)
       throw new Exception("DMJ input error: only one of At and B can be column partitioned!");
     AtB_DMJ job = new AtB_DMJ();
-    label = label + nColPartitionsOfB + useInMemCombiner;
+    label = label + nColPartitionsOfAt + "-" + nColPartitionsOfB + "-" + useInMemCombiner;
     Path outPath =
         new Path(output, AtB_DMJ.class.getName() + label);
     if (nColPartitionsOfAt != 1) 
