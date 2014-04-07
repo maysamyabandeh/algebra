@@ -222,19 +222,25 @@ public class ColPartitionJob extends AbstractJob {
 
       Iterator<Vector.Element> it = v.get().nonZeroes().iterator();
       RandomAccessSparseVector slice = null;
+      //each slice will cover the cols up until this index
       int nextColEnd = colPartSize;
       while (it.hasNext()) {
         Vector.Element e = it.next();
         if (e.index() >= nextColEnd) {
           if (slice != null) {
+            // the col of the key should be the col of one of the elements in
+            // the vector; we chose the first element
             ew.setCol(nextColEnd - colPartSize);
             vw.set(new SequentialAccessSparseVector(slice));
             context.write(ew, vw);
-            int jump = (e.index() - nextColEnd) / colPartSize * colPartSize;
-            nextColEnd += colPartSize;
-            nextColEnd += jump;
+            slice = null;
           }
-          slice = null;
+          int jump = (e.index() - nextColEnd) / colPartSize * colPartSize;
+          // set the next slice end
+          nextColEnd += colPartSize;
+          // if the previous slice was all zeros, we should jump over them to
+          // set the next slice end properly
+          nextColEnd += jump;
         }
         if (slice == null)
           slice = new RandomAccessSparseVector(numCols, colPartSize);

@@ -32,16 +32,23 @@ import org.apache.hadoop.io.WritableComparator;
 @InterfaceStability.Stable
 public class ElementWritable implements WritableComparable<ElementWritable> {
   private int row;
+  /**
+   * the col of one of the elements in the vector that is mapped to this key
+   */
   private int col;
 
   public ElementWritable() {}
 
-  /** Set the value of this IntWritable. */
   public void setRow(int row) { this.row = row; }
+  /**
+   * the col of one of the elements in the vector that is mapped to this key
+   */
   public void setCol(int col) { this.col = col; }
 
-  /** Return the value of this IntWritable. */
   public int getRow() { return row; }
+  /**
+   * the col of one of the elements in the vector that is mapped to this key
+   */
   public int getCol() { return col; }
 
   @Override

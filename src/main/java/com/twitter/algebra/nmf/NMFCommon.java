@@ -16,7 +16,7 @@ import com.myabandeh.algebra.matrix.format.MapDir;
 public class NMFCommon {
   static final String MAPSPLOTS = "algebra.mapslots";
   static final String REDUCESLOTS = "algebra.reduceslots";
-  static final int DEFAULT_REDUCESPLOTS = 100;
+  public static int DEFAULT_REDUCESPLOTS = 100;
 
   public static void main(String[] args) throws IOException {
     if (args.length < 1) {

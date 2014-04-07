@@ -252,11 +252,10 @@ public class AtB_DMJ extends AbstractJob {
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
     private MapDir otherMapDir;
     private boolean aIsMapDir;
-    private boolean useInMemCombiner = true;
+    InMemCombiner inMemCombiner;
     private VectorWritable otherVectorw = new VectorWritable();
     private VectorWritable outVectorw = new VectorWritable();
     private IntWritable outIntw = new IntWritable();
-    private double[] outValues = null;
     int resultRows, resultCols;
     int partitionCols;
 
@@ -269,12 +268,13 @@ public class AtB_DMJ extends AbstractJob {
       partitionCols = conf.getInt(PARTITIONCOLS, Integer.MAX_VALUE);
       otherMapDir = new MapDir(conf, inMemMatrixPath);
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);
-      useInMemCombiner = conf.getBoolean(USEINMEMCOMBINER, true);
+      boolean useInMemCombiner = conf.getBoolean(USEINMEMCOMBINER, true);
       if (useInMemCombiner) {
         try {
-          outValues = new double[resultRows * partitionCols];
+          inMemCombiner = new InMemCombinerColPartitionB();
+          inMemCombiner.init(resultRows, partitionCols);
         } catch (Exception e) {
-          outValues = null;
+          inMemCombiner = null;
           System.gc();
           useInMemCombiner = false;
           System.err.println("Not enough mem for in memory combiner of size "
@@ -305,8 +305,8 @@ public class AtB_DMJ extends AbstractJob {
       Iterator<Vector.Element> it = aVector.nonZeroes().iterator();
       while (it.hasNext()) {
         Vector.Element e = it.next();
-        if (useInMemCombiner)
-          combineInMem(e.index(), e.get(), bVector);
+        if (inMemCombiner != null)
+          inMemCombiner.combine(e.index(), e.get(), bVector);
         else {
           outIntw.set(e.index());
           outVectorw.set(bVector.times(e.get()));
@@ -314,65 +314,85 @@ public class AtB_DMJ extends AbstractJob {
         }
       }
     }
-
-    private void combineInMem(int row, double scale, Vector bVector) {
-      Iterator<Vector.Element> it = bVector.nonZeroes().iterator();
-      while (it.hasNext()) {
-        Vector.Element e = it.next();
-        int localCol = globalToLocalCol(e.index());
-        int localIndex = rowcolToIndex(row, localCol);
-        outValues[localIndex] += scale * e.get();
-      }
-    }
-
-    private int minGlobalCol = Integer.MIN_VALUE;
-
-    private int globalToLocalCol(int col) {
-      int localCol = col % partitionCols;
-      if (minGlobalCol == Integer.MIN_VALUE)
-        minGlobalCol = col - localCol;
-      return localCol;
-    }
-
-    private int rowcolToIndex(int row, int localCol) {
-      return row * partitionCols + localCol;
-    }
-
-    private void dumpInMemMatrix(Context context) throws IOException {
-      if (minGlobalCol == Integer.MIN_VALUE)
-        throw new IOException("minGlobalCol is not set!");
-      IntWritable iw = new IntWritable();
-      VectorWritable vw = new VectorWritable();
-      RandomAccessSparseVector vector =
-          new RandomAccessSparseVector(resultCols, partitionCols);
-      for (int r = 0; r < resultRows; r++) {
-        int index = rowcolToIndex(r, 0);
-        boolean hasNonZero = false;
-        for (int c = 0; c < partitionCols; c++, index++) {
-          double value = outValues[index];
-          if (value != 0) {
-            hasNonZero = true;
-            vector.set(c + minGlobalCol, value);
-          }
-        }
-        if (!hasNonZero)
-          continue;
-        iw.set(r);
-        vw.set(new SequentialAccessSparseVector(vector));
-        try {
-          context.write(iw, vw);
-        } catch (InterruptedException e) {
-          context.getCounter("Error", "interrup").increment(1);
-        }
-        vector = new RandomAccessSparseVector(resultCols, partitionCols);
-      }
-    }
-
+    
     @Override
     public void cleanup(Context context) throws IOException {
       otherMapDir.close();
-      if (useInMemCombiner)
-        dumpInMemMatrix(context);
+      if (inMemCombiner != null)
+        inMemCombiner.dump(context);
+    }
+
+    interface InMemCombiner {
+      void init(int rows, int cols);
+      void combine(int row, double scale, Vector bVector);
+      void dump(Context context) throws IOException;
+    }
+    
+    class InMemCombinerColPartitionB implements InMemCombiner {
+      private double[] outValues;
+      @Override
+      public void init(int rows, int cols) {
+        outValues = new double[rows * cols];
+      }
+      
+      @Override
+      public void combine(int row, double scale, Vector bVector) {
+        Iterator<Vector.Element> it = bVector.nonZeroes().iterator();
+        while (it.hasNext()) {
+          Vector.Element e = it.next();
+          int localCol = globalToLocalCol(e.index());
+          int localIndex = rowcolToIndex(row, localCol);
+          outValues[localIndex] += scale * e.get();
+        }
+      }
+      
+      @Override
+      public void dump(Context context) throws IOException {
+        if (minGlobalCol == Integer.MIN_VALUE) {
+          //too many null values could indicate an error
+          context.getCounter("InMemCombiner", "nullValues").increment(1);
+          return;
+//          throw new IOException("minGlobalCol is not set!");
+        }
+        IntWritable iw = new IntWritable();
+        VectorWritable vw = new VectorWritable();
+        RandomAccessSparseVector vector =
+            new RandomAccessSparseVector(resultCols, partitionCols);
+        for (int r = 0; r < resultRows; r++) {
+          int index = rowcolToIndex(r, 0);
+          boolean hasNonZero = false;
+          for (int c = 0; c < partitionCols; c++, index++) {
+            double value = outValues[index];
+            if (value != 0) {
+              hasNonZero = true;
+              vector.set(c + minGlobalCol, value);
+            }
+          }
+          if (!hasNonZero)
+            continue;
+          iw.set(r);
+          vw.set(new SequentialAccessSparseVector(vector));
+          try {
+            context.write(iw, vw);
+          } catch (InterruptedException e) {
+            context.getCounter("Error", "interrup").increment(1);
+          }
+          vector = new RandomAccessSparseVector(resultCols, partitionCols);
+        }
+      }
+
+      private int minGlobalCol = Integer.MIN_VALUE;
+
+      private int globalToLocalCol(int col) {
+        int localCol = col % partitionCols;
+        if (minGlobalCol == Integer.MIN_VALUE)
+          minGlobalCol = col - localCol;
+        return localCol;
+      }
+
+      private int rowcolToIndex(int row, int localCol) {
+        return row * partitionCols + localCol;
+      }
     }
 
   }

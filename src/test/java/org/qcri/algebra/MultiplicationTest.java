@@ -18,7 +18,9 @@ import com.myabandeh.algebra.matrix.multiply.ABInnerHDFSBroadcastOfB;
 import com.myabandeh.algebra.matrix.multiply.ABOuterHDFSBroadcastOfA;
 import com.myabandeh.algebra.matrix.multiply.AtBOuterStaticMapsideJoinJob;
 import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
+import com.twitter.algebra.nmf.ColPartitionJob;
 import com.twitter.algebra.nmf.CompositeDMJ;
+import com.twitter.algebra.nmf.NMFCommon;
 import com.twitter.algebra.nmf.XtXJob;
 
 public class MultiplicationTest extends Assert {
@@ -87,7 +89,7 @@ public class MultiplicationTest extends Assert {
   
   @Before
   public void setup() throws Exception {
-    System.gc();// otherwise my jvm does not automatically free the memory!
+    NMFCommon.DEFAULT_REDUCESPLOTS = 2;
     dot(inputVectorsA, inputVectorsA2, dotVectors);
     composite(inputVectorsA, inputVectorsA2, inputVectorsAsquare, compositeVectors);
     product(inputVectorsA, inputVectorsB, productVectors);
@@ -209,17 +211,64 @@ public class MultiplicationTest extends Assert {
 
   @Test
   public void testDMJ() throws Exception {
-    testDMJ(atDensePath, bDensePath, "Dense");
-    testDMJ(atSparsePath, bSparsePath, "Sparse");
-  }
+    //without column partition
+    testDMJ(atDensePath, bDensePath, "Dense", 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 1, false);
 
-  public void testDMJ(Path atPath, Path bPath, String label)
+    //with column partition
+    testDMJ(atDensePath, bDensePath, "Dense", 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense", 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", 2, false);
+    
+    //with column partition larger than available columns
+    testDMJ(atDensePath, bDensePath, "Dense", colsB + 1, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", colsB + 1, true);
+    testDMJ(atDensePath, bDensePath, "Dense", colsB + 1, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse", colsB + 1, false);
+
+    //with column partition, #reducers > col partitions
+    int nReducers = 2 * 3;
+    NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, false);
+    
+    //with column partition, #reducers > col partitions, but #reducers/#colPart is not a natural number
+    nReducers = 2 + 1;
+    NMFCommon.DEFAULT_REDUCESPLOTS = nReducers;
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, true);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, true);
+    testDMJ(atDensePath, bDensePath, "Dense" + nReducers + "_" , 2, false);
+    testDMJ(atSparsePath, bSparsePath, "Sparse" + nReducers + "_" , 2, false);
+}
+
+  public void testDMJ(Path atPath, Path bPath, String label, int nColPartitions, boolean useInMemCombiner)
       throws Exception {
     AtB_DMJ job = new AtB_DMJ();
+    label = label + nColPartitions + useInMemCombiner;
     Path outPath =
         new Path(output, AtB_DMJ.class.getName() + label);
-    job.run(conf, atPath, bPath, outPath, rowsA, colsB, colsB, true);
+    final int colsPerPartition =
+        ColPartitionJob.getColPartitionSize(colsB, nColPartitions);
+    if (nColPartitions != 1) 
+      bPath = colPartition(bPath, rowsB, colsB, nColPartitions, label);
+    job.run(conf, atPath, bPath, outPath, rowsA, colsB, colsPerPartition, useInMemCombiner);
     verifyProduct(outPath);
+  }
+  
+  Path colPartition(Path inPath, int rows, int cols, int nColPartitions,
+      String label) throws IOException, InterruptedException,
+      ClassNotFoundException {
+    DistributedRowMatrix distIn =
+        new DistributedRowMatrix(inPath, tmp, rows, cols);
+    distIn.setConf(conf);
+    DistributedRowMatrix distOut =
+        ColPartitionJob.partition(distIn, conf, label, nColPartitions);
+    return distOut.getRowPath();
   }
 
   @Test
