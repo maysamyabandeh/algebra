@@ -96,4 +96,12 @@ public class NMFCommon {
     // Print Maximum available memory
     System.out.print(" Max Memory:" + runtime.maxMemory() / mb);
   }
+
+  public static int computeOptColPartitionsForMemCombiner(Configuration conf,
+      int rows, int cols) {
+    final int MEMBYTES = conf.getInt("mapreduce.map.memory.mb", 1024);
+    int availableMem = (MEMBYTES - 512 /* jvm */) / 2; //use only half for combiner
+    int colParts = (int) (rows / (float) availableMem * cols * 8); /*bytes per double element*/
+    return colParts;
+  }
 }

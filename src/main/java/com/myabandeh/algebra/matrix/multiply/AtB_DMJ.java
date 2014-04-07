@@ -95,6 +95,61 @@ public class AtB_DMJ extends AbstractJob {
    * Perform A x B, where At and B are already wrapped in a DistributedRowMatrix
    * object. Refer to {@link AtB_DMJ} for further details.
    * 
+   * Automatically decide on partitioning the larger matrix to be used with
+   * in-memory combiners.
+   * 
+   * @param conf the initial configuration
+   * @param At transpose of matrix A
+   * @param B matrix B
+   * @param label the label for the output directory
+   * @return AxB wrapped in a DistributedRowMatrix object
+   * @throws IOException
+   * @throws InterruptedException
+   * @throws ClassNotFoundException
+   */
+  public static DistributedRowMatrix smartRun(Configuration conf,
+      DistributedRowMatrix At, DistributedRowMatrix B, String label) throws IOException,
+      InterruptedException, ClassNotFoundException {
+    log.info("running " + AtB_DMJ.class.getName());
+    if (At.numRows() != B.numRows())
+      throw new CardinalityException(At.numRows(), B.numRows());
+    Path outPath = new Path(At.getOutputTempPath(), label);
+    FileSystem fs = FileSystem.get(outPath.toUri(), conf);
+    AtB_DMJ job = new AtB_DMJ();
+    if (!fs.exists(outPath)) {
+      int numColPartitionsAt = 1, numColPartitionsB = 1;
+      int numColPartitions = NMFCommon.computeOptColPartitionsForMemCombiner(conf, At.numCols(), B.numCols());
+      long atSize = MapDir.du(At.getRowPath(), fs);
+      long bSize = MapDir.du(B.getRowPath(), fs);
+      //cost is size of remote reads. For each col partition we need to read the entire of the other matrix once
+      long atPartitionCost = numColPartitions * bSize;
+      long bPartitionCost = numColPartitions * atSize;
+      log.info("smart partitioning: numColPartitions: " + numColPartitions
+          + " atSize: " + atSize + " bSize: " + bSize + " atCost="
+          + atPartitionCost + "vs.  bCost=" + bPartitionCost);
+      if (atPartitionCost < bPartitionCost) {
+        At =  ColPartitionJob.partition(At, conf, "Atcol-" + label, numColPartitions);
+        numColPartitionsAt = numColPartitions;
+      } else {
+        B =  ColPartitionJob.partition(B, conf, "Bcol-" + label, numColPartitions);
+        numColPartitionsB = numColPartitions;
+      }
+      job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
+          B.numCols(), numColPartitionsAt,  numColPartitionsB, true);
+    } else {
+      log.warn("----------- Skip already exists: " + outPath);
+    }
+    DistributedRowMatrix distRes =
+        new DistributedRowMatrix(outPath, At.getOutputTempPath(), At.numCols(),
+            B.numCols());
+    distRes.setConf(conf);
+    return distRes;
+  }
+  
+  /**
+   * Perform A x B, where At and B are already wrapped in a DistributedRowMatrix
+   * object. Refer to {@link AtB_DMJ} for further details.
+   * 
    * @param conf the initial configuration
    * @param At transpose of matrix A
    * @param B matrix B
