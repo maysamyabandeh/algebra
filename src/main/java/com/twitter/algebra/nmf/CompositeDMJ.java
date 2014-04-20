@@ -245,6 +245,8 @@ public class CompositeDMJ extends AbstractJob {
       context.write(index, outVectorw);
     }
 
+    static final double EPSLION = 1e-10;
+
     // a . b / c
     private void composite(Vector aVector, Vector bVector, Context context) {
       for (int i = 0; i < aVector.size(); i++) {
@@ -267,6 +269,10 @@ public class CompositeDMJ extends AbstractJob {
           res = ai * bi / ci;
         else if (ai != 0)
           context.getCounter("Error", "NaN").increment(1);
+        
+        if (res < EPSLION)
+          res = 0;
+
         resVector.setQuick(i, res);
       }
     }
