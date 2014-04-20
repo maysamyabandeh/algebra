@@ -62,6 +62,7 @@ public class MapDir {
       partitioner = new TitlePartitioner(names);
     }
 
+    @SuppressWarnings("deprecation")
     public MapFile.Reader getReader(int i) throws IOException {
       if (readers[i] == null)
         readers[i] = new MapFile.Reader(fs, names[i].toString(), conf);
@@ -381,9 +382,11 @@ public class MapDir {
     long size = 0;
     for (FileStatus dirStatus : dirs) {
       //if it is a sequence file
-      size += dirStatus.getLen();
+      if (dirStatus.isFile())
+        size += dirStatus.getLen();
+      else
       //or if it is a mapfile, which is directory
-      size += dirSize(dirStatus, fs);
+        size += dirSize(dirStatus, fs);
     }
     return size;
   }
