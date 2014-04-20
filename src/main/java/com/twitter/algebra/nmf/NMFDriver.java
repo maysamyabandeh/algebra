@@ -117,14 +117,8 @@ public class NMFDriver extends AbstractJob {
       DistributedRowMatrix distYYt =
           new XtXJob().computeXtX(distYt, getTempPath(), conf, "YYt" + round);
       distYYt = CombinerJob.run(conf, distYYt, "YYt-compact" + round);
-//      DistributedRowMatrix distYtCol =
-//          ColPartitionJob.partition(distYt, conf, "Ytcol" + round,
-//              nColPartitionsB);
-//      DistributedRowMatrix distXYt =
-//          AtB_DMJ.run(conf, distXt, distYtCol, 1,
-//              nColPartitionsB, "XYt" + round, true);
-      DistributedRowMatrix distXYt =
-          AtB_DMJ.smartRun(conf, distXt, distYt, "XYt" + round);
+      DistributedRowMatrix distXYt = //no need to rerun Xt-col (use the same label)
+          AtB_DMJ.smartRun(conf, distXt, distYt, "XYt" + round, "Xt-col", "Yt-col" + round);
 
       DistributedRowMatrix distAdotXYtdivAYYt =
           CompositeDMJ.run(conf, distA, distXYt, distYYt, "A.XYtdAYYt" + round,
@@ -139,14 +133,8 @@ public class NMFDriver extends AbstractJob {
       DistributedRowMatrix distAtA =
           AlgebraCommon.toMapDir(centAtA, getTempPath(), getTempPath(), "AtA"
               + round);
-//      DistributedRowMatrix distACol =
-//          ColPartitionJob.partition(distA, conf, "Acol" + round,
-//              nColPartitionsB);
-//      DistributedRowMatrix distXtA =
-//          AtB_DMJ.run(conf, distX, distACol, 1, nColPartitionsB,
-//              "XtA" + round, true);
-      DistributedRowMatrix distXtA =
-          AtB_DMJ.smartRun(conf, distX, distA, "XtA" + round);
+      DistributedRowMatrix distXtA = //no need to rerun X-col (use the same label)
+          AtB_DMJ.smartRun(conf, distX, distA, "XtA" + round, "X-col", "A-col" + round);
       DistributedRowMatrix distYtdotXtAdivYtAtA =
           CompositeDMJ.run(conf, distYt, distXtA, distAtA, "Yt.XtAdYtAtA"
               + round, lambda1, lambda2);

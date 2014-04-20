@@ -104,13 +104,18 @@ public class AtB_DMJ extends AbstractJob {
    * @param At transpose of matrix A
    * @param B matrix B
    * @param label the label for the output directory
+   * @param labelAtCol by using a fixed label for AtCol one can avoid the second
+   *          run of the partitioning job if we know that At is not changed
+   * @param lableBCol by using a fixed label for BCol one can avoid the second
+   *          run of the partitioning job if we know that B is not changed
    * @return AxB wrapped in a DistributedRowMatrix object
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
    */
   public static DistributedRowMatrix smartRun(Configuration conf,
-      DistributedRowMatrix At, DistributedRowMatrix B, String label) throws IOException,
+      DistributedRowMatrix At, DistributedRowMatrix B, String label, String labelAtCol, String lableBCol) 
+          throws IOException,
       InterruptedException, ClassNotFoundException {
     log.info("running " + AtB_DMJ.class.getName());
     if (At.numRows() != B.numRows())
@@ -130,10 +135,10 @@ public class AtB_DMJ extends AbstractJob {
           + " atSize: " + atSize + " bSize: " + bSize + " atCost="
           + atPartitionCost + " vs.  bCost=" + bPartitionCost);
       if (atPartitionCost < bPartitionCost) {
-        At =  ColPartitionJob.partition(At, conf, "Atcol-" + label, numColPartitions);
+        At =  ColPartitionJob.partition(At, conf, labelAtCol, numColPartitions);
         numColPartitionsAt = numColPartitions;
       } else {
-        B =  ColPartitionJob.partition(B, conf, "Bcol-" + label, numColPartitions);
+        B =  ColPartitionJob.partition(B, conf, lableBCol, numColPartitions);
         numColPartitionsB = numColPartitions;
       }
       job.run(conf, At.getRowPath(), B.getRowPath(), outPath, At.numCols(),
