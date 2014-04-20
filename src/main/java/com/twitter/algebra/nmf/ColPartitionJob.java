@@ -32,6 +32,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.LazyOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
@@ -42,6 +43,8 @@ import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
 
 /**
  * Partition matrix A by column. It is necessary when A has many rows (At has
@@ -182,7 +185,8 @@ public class ColPartitionJob extends AbstractJob {
     job.setReducerClass(MyReducer.class);
     job.setNumReduceTasks(numReducers);
 
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+//    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    LazyOutputFormat.setOutputFormatClass(job, SequenceFileOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
     job.submit();
@@ -205,6 +209,7 @@ public class ColPartitionJob extends AbstractJob {
     int colPartSize;
     private ElementWritable ew = new ElementWritable();
     private VectorWritable vw = new VectorWritable();
+    private OnlineStatistics vecSizeStats = new OnlineStatistics();
 
     @Override
     public void setup(Context context) throws IOException {
@@ -232,6 +237,7 @@ public class ColPartitionJob extends AbstractJob {
             // the vector; we chose the first element
             ew.setCol(nextColEnd - colPartSize);
             vw.set(new SequentialAccessSparseVector(slice));
+            updateVectorSizeState(vw.get());
             context.write(ew, vw);
             slice = null;
           }
@@ -243,13 +249,44 @@ public class ColPartitionJob extends AbstractJob {
           nextColEnd += jump;
         }
         if (slice == null)
-          slice = new RandomAccessSparseVector(numCols, colPartSize);
+          slice =
+              new RandomAccessSparseVector(numCols, estimateNextVectorSize());
         slice.setQuick(e.index(), e.get());
       }
       if (slice != null) {
         ew.setCol(nextColEnd - colPartSize);
         vw.set(new SequentialAccessSparseVector(slice));
         context.write(ew, vw);
+      }
+    }
+    
+    private void updateVectorSizeState(Vector v) {
+      vecSizeStats.addValue(v.getNumNondefaultElements());
+    }
+    
+    private int estimateNextVectorSize() {
+      final int PAD = 20;
+      int estVal;
+      if (vecSizeStats.getN() == 0)
+        estVal = colPartSize;
+      else
+        estVal = (int) (vecSizeStats.getMean() + PAD);
+//      System.out.println("===" + estVal);
+      return estVal * 5; //to consider for hash conflicts
+    }
+    
+    class OnlineStatistics {
+      long sum = 0;
+      int cnt;
+      void addValue(int v) {
+        sum+=v;
+        cnt++;
+      }
+      int getMean() {
+        return (int) sum / cnt;
+      }
+      int getN() {
+        return cnt;
       }
     }
 
