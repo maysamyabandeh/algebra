@@ -10,10 +10,14 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.SequenceFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.myabandeh.algebra.matrix.format.MapDir;
 
 public class NMFCommon {
+  private static final Logger log = LoggerFactory.getLogger(NMFCommon.class);
+
   static final String MAPSPLOTS = "algebra.mapslots";
   static final String REDUCESLOTS = "algebra.reduceslots";
   public static int DEFAULT_REDUCESPLOTS = 100;
@@ -67,6 +71,7 @@ public class NMFCommon {
       e.printStackTrace();
     }
     long splitSize = du / mapSlots;
+    log.info("du: " + du + " mapSlots: " + mapSlots + " splitSize: " + splitSize);
     long minSplitSize = (long) (splitSize * 0.9);
     long maxSplitSize = Math.max((long) (splitSize * 1.1), 1024 * 1024);
     conf.setLong("mapred.min.split.size", minSplitSize);
@@ -99,9 +104,10 @@ public class NMFCommon {
 
   public static int computeOptColPartitionsForMemCombiner(Configuration conf,
       int rows, int cols) {
+    final int MB = 1024 * 1024;
     final int MEMBYTES = conf.getInt("mapreduce.map.memory.mb", 1024);
     int availableMem = (MEMBYTES - 512 /* jvm */) / 2; //use only half for combiner
-    int colParts = (int) (rows / (float) availableMem * cols * 8); /*bytes per double element*/
+    int colParts = (int) (rows / (float) availableMem / MB * cols * 8); /*bytes per double element*/
     return colParts;
   }
 }
