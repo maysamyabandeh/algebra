@@ -546,10 +546,15 @@ public class AtB_DMJ extends AbstractJob {
 
   public static class EpsilonReducer extends
       Reducer<IntWritable,VectorWritable,IntWritable,VectorWritable> {
-    
-    static final double EPSLION = 1e-10;
-
+    static double EPSILON = Double.NaN;
+    static final String EPSILON_STR = "matrix.atb.epsilon";
     private VectorWritable outvw = new VectorWritable();
+    
+    @Override
+    public void setup(Context context) throws IOException {
+      EPSILON = context.getConfiguration().getDouble(EPSILON_STR, Double.NaN);
+    }
+
     @Override
     public void reduce(IntWritable rowNum, Iterable<VectorWritable> values,
         Context context) throws IOException, InterruptedException {
@@ -569,6 +574,8 @@ public class AtB_DMJ extends AbstractJob {
     }
 
     RandomAccessSparseVector zeroize(RandomAccessSparseVector vector) {
+      if (Double.isNaN(EPSILON))
+        return vector;
       return new FilterEpsilonRandomAccessSparseVector(vector);
     }
     
@@ -576,7 +583,7 @@ public class AtB_DMJ extends AbstractJob {
       FilterEpsilonRandomAccessSparseVector(RandomAccessSparseVector unfiltered) {
         super(unfiltered.size(), unfiltered.getNumNondefaultElements());
         for (Element e : unfiltered.nonZeroes()) {
-          if (e.get() > EPSLION)
+          if (e.get() > EPSILON)
             setQuick(e.index(), e.get());
         }
       }

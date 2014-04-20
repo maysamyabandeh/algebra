@@ -10,6 +10,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer.Context;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
@@ -90,17 +91,25 @@ public class Matrix2TextJob extends AbstractJob {
       throw new IOException("Job failed!");
   }
   
+  static double EPSILON = Double.NaN;
+  static final String EPSILON_STR = "matrix.text.epsilon";
+
   public static class IdMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-    static final double EPSLION = 1e-10;
     VectorWritable vw = new VectorWritable();
+    
+    @Override
+    public void setup(Context context) throws IOException {
+      EPSILON = context.getConfiguration().getDouble(EPSILON_STR, Double.NaN);
+    }
+    
     @Override
     public void map(IntWritable key, VectorWritable value, Context context) throws IOException,
         InterruptedException {
       RandomAccessSparseVector tmp = new RandomAccessSparseVector(value.get().size(),
           value.get().getNumNondefaultElements());
       for (Element e : value.get().nonZeroes()) {
-        if (e.get() > EPSLION)
+        if (!Double.isNaN(EPSILON) && e.get() > EPSILON)
           tmp.set(e.index(), e.get());
       }
       vw.set(tmp);

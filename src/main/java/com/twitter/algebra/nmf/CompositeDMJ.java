@@ -11,6 +11,7 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer.Context;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -208,9 +209,13 @@ public class CompositeDMJ extends AbstractJob {
     private DenseMatrix inMemC;
     private DenseVector resVector = null;
 
+    static double EPSILON = Double.NaN;
+    static final String EPSILON_STR = "matrix.nmf.composite.epsilon";
+
     @Override
     public void setup(Context context) throws IOException {
       Configuration conf = context.getConfiguration();
+      EPSILON = conf.getDouble(EPSILON_STR, Double.NaN);
       Path mapDirMatrixPath = new Path(conf.get(MAPDIRMATRIX));
       otherMapDir = new MapDir(conf, mapDirMatrixPath);
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);
@@ -245,8 +250,6 @@ public class CompositeDMJ extends AbstractJob {
       context.write(index, outVectorw);
     }
 
-    static final double EPSLION = 1e-10;
-
     // a . b / c
     private void composite(Vector aVector, Vector bVector, Context context) {
       for (int i = 0; i < aVector.size(); i++) {
@@ -270,7 +273,7 @@ public class CompositeDMJ extends AbstractJob {
         else if (ai != 0)
           context.getCounter("Error", "NaN").increment(1);
         
-        if (res < EPSLION)
+        if (!Double.isNaN(EPSILON) && res < EPSILON)
           res = 0;
 
         resVector.setQuick(i, res);
