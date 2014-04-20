@@ -8,6 +8,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.mapreduce.Counters;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
@@ -38,7 +39,7 @@ public class ErrDMJ extends AbstractJob {
   public static final String YTROWS = "YtRows";
   public static final String YTCOLS = "YtCols";
 
-  public static void run(Configuration conf, DistributedRowMatrix X,
+  public static long run(Configuration conf, DistributedRowMatrix X,
       DistributedRowMatrix A, DistributedRowMatrix Yt, String label)
       throws IOException, InterruptedException, ClassNotFoundException {
     log.info("running " + ErrDMJ.class.getName());
@@ -55,10 +56,15 @@ public class ErrDMJ extends AbstractJob {
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
     ErrDMJ job = new ErrDMJ();
     if (!fs.exists(outPath)) {
-      job.run(conf, X.getRowPath(), A.getRowPath(),
+      Job hJob = job.run(conf, X.getRowPath(), A.getRowPath(),
           Yt.getRowPath(), outPath, A.numRows(), Yt.numRows(), Yt.numCols());
+      Counters counters = hJob.getCounters();
+      long err = counters.findCounter("Result", "sumAbs").getValue();
+      log.info("FINAL ERR is " + err);
+      return err;
     } else {
       log.warn("----------- Skip already exists: " + outPath);
+      return -1;
     }
   }
 

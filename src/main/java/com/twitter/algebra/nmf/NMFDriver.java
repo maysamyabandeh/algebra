@@ -39,7 +39,14 @@ public class NMFDriver extends AbstractJob {
   private static final String LAMBDA1 = "lambda1";
   private static final String LAMBDA2 = "lambda2";
   private static final String SAMPLE_RATE = "sampleRate";
+  private static final String MIN_ERROR_CHANGE_STR = "matrix.nmf.stop.errchange";
+  private static final String MAX_ROUNDS_STR = "matrix.nmf.stop.rounds";
   private float alpha1, alpha2, lambda1, lambda2, sampleRate;
+  /**
+   * stop the loop if the change in err is less than this
+   */
+  private long MIN_ERROR_CHANGE;
+  private int MAX_ROUNDS;
 
   @Override
   public int run(String[] args) throws Exception {
@@ -71,6 +78,9 @@ public class NMFDriver extends AbstractJob {
     if (conf == null) {
       throw new IOException("No Hadoop configuration present");
     }
+    MIN_ERROR_CHANGE = conf.getLong(MIN_ERROR_CHANGE_STR, Long.MAX_VALUE);
+    MAX_ROUNDS = conf.getInt(MAX_ROUNDS_STR, 100);
+    
     run(conf, input, output, nRows, nCols, nPCs, nColPartitions);
     return 0;
   }
@@ -111,7 +121,13 @@ public class NMFDriver extends AbstractJob {
     DistributedRowMatrix distA =
         DistRndMatrixJob.random(conf, nRows, k, getTempPath(), "A");
 
-    for (int round = 0; round < 100; round++) {
+    long errorChange = -1;
+    long prevError = -1;
+    //in early rounds sometimes error increases. we should not terminate after that
+    for (int round = 0; 
+        round < MAX_ROUNDS
+        && (errorChange < 0 || errorChange < MIN_ERROR_CHANGE); 
+        round++) {
       System.out.println("ROUND " + round + " ......");
 
       DistributedRowMatrix distYYt =
@@ -143,7 +159,10 @@ public class NMFDriver extends AbstractJob {
       DistributedRowMatrix distYtr =
           SampleRowsJob.run(conf, distYt, sampleRate, "Ytr" + round);
       distYtr = CombinerJob.run(conf, distYtr, "Ytr-compact" + round);
-      ErrDMJ.run(conf, distXr, distA, distYtr, "ErrJob" + round);
+      long error = ErrDMJ.run(conf, distXr, distA, distYtr, "ErrJob" + round);
+      if (error != -1 && prevError != -1)
+        errorChange = (prevError - error);
+      prevError = error;
     }
   }
 
