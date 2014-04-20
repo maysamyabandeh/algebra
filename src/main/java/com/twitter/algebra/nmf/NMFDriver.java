@@ -112,6 +112,7 @@ public class NMFDriver extends AbstractJob {
         DistRndMatrixJob.random(conf, nRows, k, getTempPath(), "A");
 
     for (int round = 0; round < 100; round++) {
+      System.out.println("ROUND " + round + " ......");
 
       DistributedRowMatrix distYYt =
           new XtXJob().computeXtX(distYt, getTempPath(), conf, "YYt" + round);
