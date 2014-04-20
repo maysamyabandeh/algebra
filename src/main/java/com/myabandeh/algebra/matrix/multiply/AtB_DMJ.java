@@ -12,6 +12,7 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -21,6 +22,7 @@ import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.function.Functions;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,7 +128,7 @@ public class AtB_DMJ extends AbstractJob {
       long bPartitionCost = numColPartitions * atSize;
       log.info("smart partitioning: numColPartitions: " + numColPartitions
           + " atSize: " + atSize + " bSize: " + bSize + " atCost="
-          + atPartitionCost + "vs.  bCost=" + bPartitionCost);
+          + atPartitionCost + " vs.  bCost=" + bPartitionCost);
       if (atPartitionCost < bPartitionCost) {
         At =  ColPartitionJob.partition(At, conf, "Atcol-" + label, numColPartitions);
         numColPartitionsAt = numColPartitions;
@@ -300,7 +302,7 @@ public class AtB_DMJ extends AbstractJob {
     RowPartitioner.setPartitioner(job, RowPartitioner.IntRowPartitioner.class,
         atCols);
 
-    job.setReducerClass(AtBOuterStaticMapsideJoinJob.MyReducer.class);
+    job.setReducerClass(EpsilonReducer.class);
     job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
@@ -536,4 +538,43 @@ public class AtB_DMJ extends AbstractJob {
 
   }
 
+
+  public static class EpsilonReducer extends
+      Reducer<IntWritable,VectorWritable,IntWritable,VectorWritable> {
+    
+    static final double EPSLION = 1e-10;
+
+    private VectorWritable outvw = new VectorWritable();
+    @Override
+    public void reduce(IntWritable rowNum, Iterable<VectorWritable> values,
+        Context context) throws IOException, InterruptedException {
+      Iterator<VectorWritable> it = values.iterator();
+      if (!it.hasNext())
+        return;
+      RandomAccessSparseVector accumulator =
+          new RandomAccessSparseVector(it.next().get());
+      while (it.hasNext()) {
+        Vector row = it.next().get();
+        accumulator.assign(row, Functions.PLUS);
+      }
+      accumulator = zeroize(accumulator);
+      Vector resVector = new SequentialAccessSparseVector(accumulator);
+      outvw.set(resVector);
+      context.write(rowNum, outvw);
+    }
+
+    RandomAccessSparseVector zeroize(RandomAccessSparseVector vector) {
+      return new FilterEpsilonRandomAccessSparseVector(vector);
+    }
+    
+    class FilterEpsilonRandomAccessSparseVector extends RandomAccessSparseVector {
+      FilterEpsilonRandomAccessSparseVector(RandomAccessSparseVector unfiltered) {
+        super(unfiltered.size(), unfiltered.getNumNondefaultElements());
+        for (Element e : unfiltered.nonZeroes()) {
+          if (e.get() > EPSLION)
+            setQuick(e.index(), e.get());
+        }
+      }
+    }
+  }
 }
