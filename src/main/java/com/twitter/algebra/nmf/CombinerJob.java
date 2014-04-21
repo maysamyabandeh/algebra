@@ -19,9 +19,9 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.MergeVectorsReducer;
-import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
-import com.myabandeh.algebra.matrix.format.RowPartitioner;
+import com.twitter.algebra.MergeVectorsReducer;
+import com.twitter.algebra.matrix.format.MatrixOutputFormat;
+import com.twitter.algebra.matrix.format.RowPartitioner;
 
 /**
  * Combiner smaller (row) partitions to get bigger files. This would put less

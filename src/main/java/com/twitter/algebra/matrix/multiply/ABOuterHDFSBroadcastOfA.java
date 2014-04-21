@@ -1,4 +1,4 @@
-package com.myabandeh.algebra.matrix.multiply;
+package com.twitter.algebra.matrix.multiply;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -23,9 +23,9 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.AlgebraCommon;
-import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
-import com.myabandeh.algebra.matrix.format.RowPartitioner;
+import com.twitter.algebra.AlgebraCommon;
+import com.twitter.algebra.matrix.format.MatrixOutputFormat;
+import com.twitter.algebra.matrix.format.RowPartitioner;
 
 /**
  * Perform A x B matrix multiplication

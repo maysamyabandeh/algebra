@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.myabandeh.algebra;
+package com.twitter.algebra;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -41,8 +41,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.io.Closeables;
-import com.myabandeh.algebra.matrix.format.MapDir;
-import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
+import com.twitter.algebra.matrix.format.MapDir;
+import com.twitter.algebra.matrix.format.MatrixOutputFormat;
 
 /**
  * This class includes the utility functions that is used by multiple algebra classes

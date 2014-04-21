@@ -1,4 +1,4 @@
-package com.myabandeh.algebra.matrix.format;
+package com.twitter.algebra.matrix.format;
 
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;

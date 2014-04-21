@@ -12,10 +12,10 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.AlgebraCommon;
-import com.myabandeh.algebra.TransposeJob;
-import com.myabandeh.algebra.matrix.format.Sequence2MatrixFormatJob;
-import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
+import com.twitter.algebra.AlgebraCommon;
+import com.twitter.algebra.TransposeJob;
+import com.twitter.algebra.matrix.format.Sequence2MatrixFormatJob;
+import com.twitter.algebra.matrix.multiply.AtB_DMJ;
 
 /**
  * Run NMF (Non-negative Matrix Factorization) on top of MapReduce.

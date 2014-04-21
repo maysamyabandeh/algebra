@@ -43,8 +43,8 @@ import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.matrix.format.MatrixOutputFormat;
-import com.myabandeh.algebra.matrix.format.RowPartitioner;
+import com.twitter.algebra.matrix.format.MatrixOutputFormat;
+import com.twitter.algebra.matrix.format.RowPartitioner;
 
 /**
  * Convert the edge format to Matrix format. It also reindexes the row ids to

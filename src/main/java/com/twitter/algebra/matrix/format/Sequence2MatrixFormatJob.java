@@ -1,4 +1,4 @@
-package com.myabandeh.algebra.matrix.format;
+package com.twitter.algebra.matrix.format;
 
 import java.io.IOException;
 import java.util.List;

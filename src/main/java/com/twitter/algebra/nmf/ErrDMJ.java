@@ -24,8 +24,8 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.AlgebraCommon;
-import com.myabandeh.algebra.matrix.format.MapDir;
+import com.twitter.algebra.AlgebraCommon;
+import com.twitter.algebra.matrix.format.MapDir;
 
 /**
  * | X - A * Y |

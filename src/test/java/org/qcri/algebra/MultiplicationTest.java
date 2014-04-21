@@ -12,12 +12,12 @@ import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.myabandeh.algebra.AlgebraCommon;
-import com.myabandeh.algebra.TransposeJob;
-import com.myabandeh.algebra.matrix.multiply.ABInnerHDFSBroadcastOfB;
-import com.myabandeh.algebra.matrix.multiply.ABOuterHDFSBroadcastOfA;
-import com.myabandeh.algebra.matrix.multiply.AtBOuterStaticMapsideJoinJob;
-import com.myabandeh.algebra.matrix.multiply.AtB_DMJ;
+import com.twitter.algebra.AlgebraCommon;
+import com.twitter.algebra.TransposeJob;
+import com.twitter.algebra.matrix.multiply.ABInnerHDFSBroadcastOfB;
+import com.twitter.algebra.matrix.multiply.ABOuterHDFSBroadcastOfA;
+import com.twitter.algebra.matrix.multiply.AtBOuterStaticMapsideJoinJob;
+import com.twitter.algebra.matrix.multiply.AtB_DMJ;
 import com.twitter.algebra.nmf.ColPartitionJob;
 import com.twitter.algebra.nmf.CompositeDMJ;
 import com.twitter.algebra.nmf.NMFCommon;

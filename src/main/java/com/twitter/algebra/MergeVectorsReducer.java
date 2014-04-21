@@ -1,4 +1,4 @@
-package com.myabandeh.algebra;
+package com.twitter.algebra;
 
 import java.io.IOException;
 

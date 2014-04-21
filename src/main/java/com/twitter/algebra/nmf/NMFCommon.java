@@ -13,7 +13,7 @@ import org.apache.hadoop.io.SequenceFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.myabandeh.algebra.matrix.format.MapDir;
+import com.twitter.algebra.matrix.format.MapDir;
 
 public class NMFCommon {
   private static final Logger log = LoggerFactory.getLogger(NMFCommon.class);
