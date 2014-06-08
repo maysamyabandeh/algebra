@@ -552,7 +552,7 @@ public class AtB_DMJ extends AbstractJob {
     
     @Override
     public void setup(Context context) throws IOException {
-      EPSILON = context.getConfiguration().getDouble(EPSILON_STR, Double.NaN);
+      EPSILON = context.getConfiguration().getFloat(EPSILON_STR, Float.NaN);
     }
 
     @Override

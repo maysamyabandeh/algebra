@@ -214,7 +214,7 @@ public class CompositeDMJ extends AbstractJob {
     @Override
     public void setup(Context context) throws IOException {
       Configuration conf = context.getConfiguration();
-      EPSILON = conf.getDouble(EPSILON_STR, Double.NaN);
+      EPSILON = conf.getFloat(EPSILON_STR, Float.NaN);
       Path mapDirMatrixPath = new Path(conf.get(MAPDIRMATRIX));
       otherMapDir = new MapDir(conf, mapDirMatrixPath);
       aIsMapDir = conf.getBoolean(AISMAPDIR, true);

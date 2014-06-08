@@ -99,7 +99,7 @@ public class Matrix2TextJob extends AbstractJob {
     
     @Override
     public void setup(Context context) throws IOException {
-      EPSILON = context.getConfiguration().getDouble(EPSILON_STR, Double.NaN);
+      EPSILON = context.getConfiguration().getFloat(EPSILON_STR, Float.NaN);
     }
     
     @Override
