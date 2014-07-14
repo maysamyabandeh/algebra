@@ -21,13 +21,13 @@
   <artifactId>algebra</artifactId>
   <description>Scalable Algebra</description>
   <packaging>jar</packaging>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1-SNAPSHOT</version>
   <name>algebra</name>
   <url>https://twitter.com/MaysamYabandeh</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <hadoop.version>3.0.0-SNAPSHOT</hadoop.version>
+    <hadoop.version>2.4.0</hadoop.version>
     <lucene.version>3.6.0</lucene.version>
   </properties>
 

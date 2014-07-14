@@ -13,7 +13,7 @@
 #limitations under the License.
 s=`date`
 LOG=37m$1.log
-hadoop jar algebra-1.0-SNAPSHOT-job.jar com.twitter.algebra.nmf.NMFDriver \
+hadoop jar algebra-0.1-SNAPSHOT-job.jar com.twitter.algebra.nmf.NMFDriver \
 	-Dmapreduce.job.split.metainfo.maxsize=-1 \
 	-Dyarn.app.mapreduce.am.resource.mb=8096 \
 	-Dyarn.app.mapreduce.am.command-opts='-Xmx7000m' \

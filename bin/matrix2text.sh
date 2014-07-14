@@ -11,4 +11,4 @@
 #WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #See the License for the specific language governing permissions and
 #limitations under the License.
-hadoop jar algebra-1.0-SNAPSHOT-job.jar com.twitter.algebra.matrix.text.Matrix2TextJob -i $1 --tempDir mattmp --output matoutputUS
+hadoop jar algebra-0.1-SNAPSHOT-job.jar com.twitter.algebra.matrix.text.Matrix2TextJob -i $1 --tempDir mattmp --output matoutputUS
