@@ -98,6 +98,9 @@ public class AtBOuterStaticMapsideJoinJob extends AbstractJob {
     
     job.setCombinerClass(MyReducer.class);
     
+    int numReducers = conf.getInt("algebra.reduceslots.multiply", 10);
+    job.setNumReduceTasks(numReducers);
+
     job.setReducerClass(MyReducer.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
