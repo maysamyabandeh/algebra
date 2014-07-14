@@ -129,7 +129,7 @@ public class MatrixOutputFormat extends
       try {
         rawWriter.write(key, value);
       } catch (IOException e) {
-        //TODO: I get this error with twitter data set as there are a few out-of-order
+        //TODO: I get this error with some data set as there are a few out-of-order
         //records.
         log.info("out of order key? " + e.getMessage());
         e.printStackTrace();
