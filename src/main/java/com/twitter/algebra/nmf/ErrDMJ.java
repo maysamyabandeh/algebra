@@ -30,9 +30,9 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -41,7 +41,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.twitter.algebra.AlgebraCommon;
+import com.twitter.algebra.MergeVectorsReducer;
 import com.twitter.algebra.matrix.format.MapDir;
+import com.twitter.algebra.matrix.format.MatrixOutputFormat;
 
 /**
  * | X - A * Y |
@@ -55,7 +57,7 @@ public class ErrDMJ extends AbstractJob {
   public static final String YTROWS = "YtRows";
   public static final String YTCOLS = "YtCols";
 
-  public static long run(Configuration conf, DistributedRowMatrix X,
+  public static long run(Configuration conf, DistributedRowMatrix X, Vector xColSumVec,
       DistributedRowMatrix A, DistributedRowMatrix Yt, String label)
       throws IOException, InterruptedException, ClassNotFoundException {
     log.info("running " + ErrDMJ.class.getName());
@@ -71,17 +73,36 @@ public class ErrDMJ extends AbstractJob {
     Path outPath = new Path(A.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
     ErrDMJ job = new ErrDMJ();
+    long totalErr = -1;
     if (!fs.exists(outPath)) {
       Job hJob = job.run(conf, X.getRowPath(), A.getRowPath(),
           Yt.getRowPath(), outPath, A.numRows(), Yt.numRows(), Yt.numCols());
       Counters counters = hJob.getCounters();
-      long err = counters.findCounter("Result", "sumAbs").getValue();
-      log.info("FINAL ERR is " + err);
-      return err;
+      counters.findCounter("Result", "sumAbs").getValue();
+      log.info("FINAL ERR is " + totalErr);
     } else {
       log.warn("----------- Skip already exists: " + outPath);
-      return -1;
     }
+    Vector sumErrVec = AlgebraCommon.mapDirToSparseVector(outPath, 1, 
+        A.numCols(), conf);
+    double maxColErr = Double.MIN_VALUE;
+    double sumColErr = 0;
+    int cntColErr = 0;
+    Iterator<Vector.Element> it = sumErrVec.nonZeroes().iterator();
+    while (it.hasNext()) {
+      Vector.Element el = it.next();
+      double errP2 = el.get();
+      double origP2 =  xColSumVec.get(el.index());
+      double colErr = errP2 / origP2;
+      log.info("col: " + el.index() + " sum(err^2): " + errP2 + " sum(val^2): " + 
+          origP2 + " colErr: " + colErr);
+      maxColErr = Math.max(colErr, maxColErr);
+      sumColErr += colErr;
+      cntColErr++;
+    }
+    log.info(" Max Col Err: " + maxColErr);
+    log.info(" Avg Col Err: " + sumColErr / cntColErr);
+    return totalErr;
   }
 
   public Job run(Configuration conf, Path xPath, Path matrixAInputPath,
@@ -109,8 +130,12 @@ public class ErrDMJ extends AbstractJob {
     job.setMapOutputKeyClass(IntWritable.class);
     job.setMapOutputValueClass(VectorWritable.class);
 
-    job.setNumReduceTasks(0);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    int numReducers = 1;
+    job.setNumReduceTasks(numReducers);
+    job.setCombinerClass(MergeVectorsReducer.class);
+    job.setReducerClass(MergeVectorsReducer.class);
+    
+    job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
     job.submit();
@@ -125,6 +150,8 @@ public class ErrDMJ extends AbstractJob {
     private MapDir xMapDir;
     private SparseMatrix ytMatrix;
     private VectorWritable xVectorw = new VectorWritable();
+    private VectorWritable outvw = new VectorWritable();
+    private IntWritable iw = new IntWritable(0);
     double totalDiff = 0;
 
     @Override
@@ -151,14 +178,19 @@ public class ErrDMJ extends AbstractJob {
         return;
       }
       Vector xv = xVectorw.get();
+      Vector sumVec = new RandomAccessSparseVector(xv.size());
       Iterator<Vector.Element> xIt = xv.nonZeroes().iterator();
       while (xIt.hasNext()) {
         Vector.Element xelement = xIt.next();
         int colIndex = xelement.index();
         // row of yt is col of y
         double dotRes = av.dot(ytMatrix.viewRow(colIndex));
-        double diff = Math.abs(dotRes - xelement.get());
-        totalDiff += diff;
+        double diff = dotRes - xelement.get();
+        totalDiff += Math.abs(diff);
+        double squareDiff = diff * diff;
+        sumVec.set(colIndex, squareDiff);
+        outvw.set(sumVec);
+        context.write(iw, outvw);
       }
     }
 

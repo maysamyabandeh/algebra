@@ -24,6 +24,7 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +127,12 @@ public class NMFDriver extends AbstractJob {
     log.info("writing Xt");
     DistributedRowMatrix distXt = TransposeJob.transpose(distX, conf, "Xt");
 
+    log.info("summing Xt rows (X cols)");
+    Path xtRowSumPath = RowSquareSumJob.run(conf, distXt, "Xt-rowsum");
+    Path xColSumPath = xtRowSumPath;
+    Vector xColSumVec = AlgebraCommon.mapDirToSparseVector(xtRowSumPath, 1, 
+        distX.numCols(), conf);
+
     log.info("sampling X");
     DistributedRowMatrix distXr =
         SampleColsJob.run(conf, distX, sampleRate, "Xr");
@@ -175,7 +182,7 @@ public class NMFDriver extends AbstractJob {
       DistributedRowMatrix distYtr =
           SampleRowsJob.run(conf, distYt, sampleRate, "Ytr" + round);
       distYtr = CombinerJob.run(conf, distYtr, "Ytr-compact" + round);
-      long error = ErrDMJ.run(conf, distXr, distA, distYtr, "ErrJob" + round);
+      long error = ErrDMJ.run(conf, distXr, xColSumVec, distA, distYtr, "ErrJob" + round);
       if (error != -1 && prevError != -1)
         errorChange = (prevError - error);
       prevError = error;
