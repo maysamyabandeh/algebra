@@ -38,7 +38,7 @@ import com.twitter.algebra.matrix.multiply.AtB_DMJ;
 import com.twitter.algebra.nmf.ColPartitionJob;
 import com.twitter.algebra.nmf.CompositeDMJ;
 import com.twitter.algebra.nmf.NMFCommon;
-import com.twitter.algebra.nmf.RowSumJob;
+import com.twitter.algebra.nmf.RowSquareSumJob;
 import com.twitter.algebra.nmf.XtXJob;
 
 public class MultiplicationTest extends Assert {
@@ -206,9 +206,9 @@ public class MultiplicationTest extends Assert {
     DistributedRowMatrix a =
         new DistributedRowMatrix(aPath, tmp, rowsA, colsA);
     a.setConf(conf);
-    Path outPath = new Path(output, RowSumJob.class.getName() + label);
-    new RowSumJob().run(conf, aPath, outPath, a.numRows());
-    verifySum(outPath);
+    Path outPath = new Path(output, RowSquareSumJob.class.getName() + label);
+    new RowSquareSumJob().run(conf, aPath, outPath, a.numRows());
+    verifySquareSum(outPath);
   }
 
   @Test
@@ -419,15 +419,14 @@ public class MultiplicationTest extends Assert {
     }
   }
 
-  void verifySum(Path sumPath) throws IOException {
+  void verifySquareSum(Path sumPath) throws IOException {
     Vector sumVec =
         AlgebraCommon.mapDirToSparseVector(sumPath, 1, colsA, conf);
     double[][] vectorsA = inputVectorsA; 
     for (int r = 0; r < vectorsA.length; r++) {
       double sum = 0;
-      for (int c = 0; c < vectorsA[0].length; c++) {
-        sum += vectorsA[r][c];
-      }
+      for (int c = 0; c < vectorsA[0].length; c++)
+        sum += vectorsA[r][c] * vectorsA[r][c];
       Assert.assertEquals("The sum of a[" + r + "][*] is incorrect: ",
           sum, sumVec.get(r), EPSILON);
     }

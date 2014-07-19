@@ -34,6 +34,7 @@ import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.function.Functions;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,9 +49,9 @@ import com.twitter.algebra.matrix.format.MatrixOutputFormat;
  * @author myabandeh
  * 
  */
-public class RowSumJob extends AbstractJob {
+public class RowSquareSumJob extends AbstractJob {
   private static final Logger log = LoggerFactory
-      .getLogger(RowSumJob.class);
+      .getLogger(RowSquareSumJob.class);
 
   @Override
   public int run(String[] strings) throws Exception {
@@ -69,7 +70,7 @@ public class RowSumJob extends AbstractJob {
         new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
             numCols);
     matrix.setConf(new Configuration(getConf()));
-    RowSumJob.run(getConf(), matrix, "combined-" + getInputPath());
+    RowSquareSumJob.run(getConf(), matrix, "combined-" + getInputPath());
     return 0;
   }
 
@@ -85,10 +86,10 @@ public class RowSumJob extends AbstractJob {
    */
   public static Path run(Configuration conf, DistributedRowMatrix A, String label)
       throws IOException, InterruptedException, ClassNotFoundException {
-    log.info("running " + RowSumJob.class.getName());
+    log.info("running " + RowSquareSumJob.class.getName());
     Path outPath = new Path(A.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
-    RowSumJob job = new RowSumJob();
+    RowSquareSumJob job = new RowSquareSumJob();
     if (!fs.exists(outPath)) {
       job.run(conf, A.getRowPath(), outPath, A.numRows());
     } else {
@@ -107,8 +108,8 @@ public class RowSumJob extends AbstractJob {
       ClassNotFoundException {
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
-    job.setJarByClass(RowSumJob.class);
-    job.setJobName(RowSumJob.class.getSimpleName() + "-" + matrixOutputPath.getName());
+    job.setJarByClass(RowSquareSumJob.class);
+    job.setJobName(RowSquareSumJob.class.getSimpleName() + "-" + matrixOutputPath.getName());
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     matrixInputPath = fs.makeQualified(matrixInputPath);
     matrixOutputPath = fs.makeQualified(matrixOutputPath);
@@ -144,9 +145,9 @@ public class RowSumJob extends AbstractJob {
     public void map(IntWritable key, VectorWritable value, Context context) throws IOException,
         InterruptedException {
       Vector inVec = value.get();
-      Double sum = inVec.zSum();
+      Double sqaureSum = inVec.aggregate(Functions.PLUS, Functions.pow(2));
       Vector sumVec = new SequentialAccessSparseVector(inVec.size());
-      sumVec.set(key.get(), sum);
+      sumVec.set(key.get(), sqaureSum);
       vw.set(sumVec);
       context.write(iw, vw);
     }
