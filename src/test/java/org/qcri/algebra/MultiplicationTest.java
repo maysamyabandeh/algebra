@@ -24,6 +24,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.junit.Before;
 import org.junit.Test;
@@ -37,6 +38,7 @@ import com.twitter.algebra.matrix.multiply.AtB_DMJ;
 import com.twitter.algebra.nmf.ColPartitionJob;
 import com.twitter.algebra.nmf.CompositeDMJ;
 import com.twitter.algebra.nmf.NMFCommon;
+import com.twitter.algebra.nmf.RowSumJob;
 import com.twitter.algebra.nmf.XtXJob;
 
 public class MultiplicationTest extends Assert {
@@ -192,6 +194,21 @@ public class MultiplicationTest extends Assert {
     DistributedRowMatrix distAtA =
         new XtXJob().computeXtX(a, tmp, conf, XtXJob.class.getName() + label);
     verifyAtA(distAtA.getRowPath());
+  }
+  
+  @Test
+  public void tesSumJob() throws Exception {
+    tesSumJob(aDensePath, "Dense");
+    tesSumJob(aSparsePath, "Sparse");
+  }
+
+  public void tesSumJob(Path aPath, String label) throws Exception {
+    DistributedRowMatrix a =
+        new DistributedRowMatrix(aPath, tmp, rowsA, colsA);
+    a.setConf(conf);
+    Path outPath = new Path(output, RowSumJob.class.getName() + label);
+    new RowSumJob().run(conf, aPath, outPath, a.numRows());
+    verifySum(outPath);
   }
 
   @Test
@@ -399,6 +416,20 @@ public class MultiplicationTest extends Assert {
       for (int c = 0; c < ataMatrix.numCols(); c++)
         Assert.assertEquals("The ata[" + r + "][" + c + "] is incorrect: ",
             ataVectors[r][c], ataMatrix.get(r, c), EPSILON);
+    }
+  }
+
+  void verifySum(Path sumPath) throws IOException {
+    Vector sumVec =
+        AlgebraCommon.mapDirToSparseVector(sumPath, 1, colsA, conf);
+    double[][] vectorsA = inputVectorsA; 
+    for (int r = 0; r < vectorsA.length; r++) {
+      double sum = 0;
+      for (int c = 0; c < vectorsA[0].length; c++) {
+        sum += vectorsA[r][c];
+      }
+      Assert.assertEquals("The sum of a[" + r + "][*] is incorrect: ",
+          sum, sumVec.get(r), EPSILON);
     }
   }
 
