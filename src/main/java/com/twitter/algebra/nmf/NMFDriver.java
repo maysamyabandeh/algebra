@@ -74,6 +74,7 @@ public class NMFDriver extends AbstractJob {
     addOption(COLSOPTION, "cols", "Number of cols");
     addOption(PRINCIPALSOPTION, "pcs", "Number of principal components");
     addOption(PARTITIONSOPTION, "parts", "Number of partitions in principal components");
+    addOption(SAMPLE_RATE, SAMPLE_RATE, "sample rate for error calculation");
     if (parseArguments(args) == null) {
       return -1;
     }
@@ -102,6 +103,9 @@ public class NMFDriver extends AbstractJob {
     return 0;
   }
 
+  DistributedRowMatrix threadOutMatrix;
+  Thread otherThread;
+  
   /**
    * Reads X and factorize it to X = A * Y, where X=r*c, A=r*k, Y=k*c
    * 
@@ -114,23 +118,23 @@ public class NMFDriver extends AbstractJob {
    * @param nColPartitionsB
    * @throws Exception
    */
-  private void run(Configuration conf, Path input, Path output, int nRows,
+  private void run(final Configuration conf, Path input, Path output, int nRows,
       int nCols, int k, int nColPartitionsB) throws Exception {
     log.info("reading X");
-    DistributedRowMatrix distX =
+    final DistributedRowMatrix distXOrig =
         new DistributedRowMatrix(input, getTempPath(), nRows, nCols);
-    distX.setConf(conf);
+    distXOrig.setConf(conf);
 
     log.info("converting X");
-    distX = Sequence2MatrixFormatJob.run(conf, distX, "X");
+    final DistributedRowMatrix distX = Sequence2MatrixFormatJob.run(conf, distXOrig, "X");
 
     log.info("writing Xt");
-    DistributedRowMatrix distXt = TransposeJob.transpose(distX, conf, "Xt");
+    final DistributedRowMatrix distXt = TransposeJob.transpose(distX, conf, "Xt");
 
     log.info("summing Xt rows (X cols)");
     Path xtRowSumPath = RowSquareSumJob.run(conf, distXt, "Xt-rowsum");
     Path xColSumPath = xtRowSumPath;
-    Vector xColSumVec = AlgebraCommon.mapDirToSparseVector(xtRowSumPath, 1, 
+    Vector xColSumVec = AlgebraCommon.mapDirToSparseVector(xColSumPath, 1, 
         distX.numCols(), conf);
 
     log.info("sampling X");
@@ -153,17 +157,54 @@ public class NMFDriver extends AbstractJob {
         round++) {
       System.out.println("ROUND " + round + " ......");
 
+      //run in parallel
+      final int final_round1 = round;
+      final DistributedRowMatrix finalYt = distYt;
+      Runnable r = new Runnable() {
+        @Override
+        public void run() {
+          threadOutMatrix = null;
+          try {
+            threadOutMatrix = //no need to rerun Xt-col (use the same label)
+                AtB_DMJ.smartRun(conf, distXt, finalYt, "XYt" + final_round1, "Xt-col", "Yt-col" + final_round1);
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+        }
+      };
+      otherThread = new Thread(r);
+      otherThread.start();
+      
       DistributedRowMatrix distYYt =
           new XtXJob().computeXtX(distYt, getTempPath(), conf, "YYt" + round);
       distYYt = CombinerJob.run(conf, distYYt, "YYt-compact" + round);
-      DistributedRowMatrix distXYt = //no need to rerun Xt-col (use the same label)
-          AtB_DMJ.smartRun(conf, distXt, distYt, "XYt" + round, "Xt-col", "Yt-col" + round);
+      
+      otherThread.join();
+      DistributedRowMatrix distXYt = threadOutMatrix;
 
       DistributedRowMatrix distAdotXYtdivAYYt =
           CompositeDMJ.run(conf, distA, distXYt, distYYt, "A.XYtdAYYt" + round,
               alpha1, alpha2);
       distA = distAdotXYtdivAYYt;
 
+      //run in parallel
+      final int final_round2 = round;
+      final DistributedRowMatrix finalA = distA;
+      r = new Runnable() {
+        @Override
+        public void run() {
+          threadOutMatrix = null;
+          try {
+            threadOutMatrix = //no need to rerun Xt-col (use the same label)
+                AtB_DMJ.smartRun(conf, distX, finalA, "XtA" + final_round2, "X-col", "A-col" + final_round2);
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+        }
+      };
+      otherThread = new Thread(r);
+      otherThread.start();
+      
       DistributedRowMatrix distAAt =
           new XtXJob().computeXtX(distA, getTempPath(), conf, "AAt" + round);
       Matrix centAAt = AlgebraCommon.toDenseMatrix(distAAt);
@@ -172,8 +213,10 @@ public class NMFDriver extends AbstractJob {
       DistributedRowMatrix distAtA =
           AlgebraCommon.toMapDir(centAtA, getTempPath(), getTempPath(), "AtA"
               + round);
-      DistributedRowMatrix distXtA = //no need to rerun X-col (use the same label)
-          AtB_DMJ.smartRun(conf, distX, distA, "XtA" + round, "X-col", "A-col" + round);
+      
+      otherThread.join();
+      DistributedRowMatrix distXtA = threadOutMatrix;
+      
       DistributedRowMatrix distYtdotXtAdivYtAtA =
           CompositeDMJ.run(conf, distYt, distXtA, distAtA, "Yt.XtAdYtAtA"
               + round, lambda1, lambda2);
