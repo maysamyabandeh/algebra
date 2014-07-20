@@ -91,6 +91,12 @@ public class CombinerJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath,
       Path matrixOutputPath, int aRows) throws IOException, InterruptedException,
       ClassNotFoundException {
+    conf = new Configuration(conf);
+//    conf.setBoolean("mapreduce.output.compress", true);
+//    conf.setBoolean("mapreduce.output.fileoutputformat.compress", true);
+//    conf.set("mapreduce.output.fileoutputformat.compress.codec", "com.hadoop.compression.lzo.LzoCodec");
+    conf.setInt("dfs.replication", 20);
+
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);
     job.setJarByClass(CombinerJob.class);

@@ -102,6 +102,8 @@ public class XtXJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath, int numCols,
       String xmPath, Path matrixOutputPath) throws IOException,
       InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.setInt(MATRIXCOLS, numCols);
 //    conf.set(XMPATH, xmPath);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);

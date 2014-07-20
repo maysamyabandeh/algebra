@@ -94,6 +94,8 @@ public class SampleColsJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath, int cols,
       Path matrixOutputPath, float sampleRate) throws IOException,
       InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.setFloat(SAMPLERATE, sampleRate);
     conf.setInt(COLS, cols);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);

@@ -165,6 +165,8 @@ public class ColPartitionJob extends AbstractJob {
       Path matrixOutputPath, int numInputRows, int numInputCols,
       int numColPartitions) throws IOException, InterruptedException,
       ClassNotFoundException {
+    conf = new Configuration(conf);
+
     FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
     int numReducers = NMFCommon.getNumberOfReduceSlots(conf, "colpartition");
 

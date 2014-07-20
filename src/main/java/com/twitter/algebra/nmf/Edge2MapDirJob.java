@@ -113,6 +113,8 @@ public class Edge2MapDirJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath,
       Path matrixOutputPath, int numInputRows, int numInputCols, String name)
       throws IOException, InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.set(INDEXNAME, name);
     conf.setInt(ROWS, numInputRows);
     conf.setInt(COLS, numInputCols);

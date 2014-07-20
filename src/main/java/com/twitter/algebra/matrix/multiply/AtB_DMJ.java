@@ -290,6 +290,8 @@ public class AtB_DMJ extends AbstractJob {
       Path matrixOutputPath, int atCols, int bCols, int colsPerPartition,
       boolean aIsMapDir, boolean useInMemCombiner) throws IOException,
       InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.set(MATRIXINMEMORY, mapDirPath.toString());
     conf.setBoolean(AISMAPDIR, aIsMapDir);
     conf.setBoolean(USEINMEMCOMBINER, useInMemCombiner);
@@ -298,6 +300,12 @@ public class AtB_DMJ extends AbstractJob {
     conf.setInt(PARTITIONCOLS, colsPerPartition);
     FileSystem fs = FileSystem.get(matrixOutputPath.toUri(), conf);
     NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPaths, "dmj");
+
+    if (useInMemCombiner) {
+      Configuration newConf = new Configuration(conf);
+      newConf.set("mapreduce.task.io.sort.mb", "1");
+      conf = newConf;
+    }
 
     @SuppressWarnings("deprecation")
     Job job = new Job(conf);

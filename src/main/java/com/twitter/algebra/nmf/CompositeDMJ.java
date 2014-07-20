@@ -173,6 +173,7 @@ public class CompositeDMJ extends AbstractJob {
       Path matrixOutputPath, int atCols, boolean aIsMapDir, String inMemCStr,
       int inMemCRows, int inMemCCols, float alpha1, float alpha2)
       throws IOException, InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
     conf.set(MATRIXINMEMORY, inMemCStr);
     conf.setInt(MATRIXINMEMORYROWS, inMemCRows);
     conf.setInt(MATRIXINMEMORYCOLS, inMemCCols);

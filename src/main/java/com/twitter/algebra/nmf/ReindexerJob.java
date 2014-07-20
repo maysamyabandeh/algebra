@@ -106,6 +106,8 @@ public class ReindexerJob extends AbstractJob {
 
   public Job run(Configuration conf, Path matrixInputPath, Path matrixOutputPath)
       throws IOException, InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.set("mapreduce.input.keyvaluelinerecordreader.key.value.separator",
         "\t");
 

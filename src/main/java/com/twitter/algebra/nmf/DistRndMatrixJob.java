@@ -125,6 +125,8 @@ public class DistRndMatrixJob extends AbstractJob {
   public void run(Configuration conf, Path inPath, Path matrixOutputPath,
       int numInputRows, int numInputCols) throws IOException,
       InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.setInt(ROWS, numInputRows);
     conf.setInt(COLS, numInputCols);
 

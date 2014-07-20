@@ -87,6 +87,8 @@ public class SampleRowsJob extends AbstractJob {
   public void run(Configuration conf, Path matrixInputPath,
       Path matrixOutputPath, float sampleRate) throws IOException,
       InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.setFloat(SAMPLERATE, sampleRate);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath,

@@ -86,6 +86,8 @@ public class RowSquareSumJob extends AbstractJob {
    */
   public static Path run(Configuration conf, DistributedRowMatrix A, String label)
       throws IOException, InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     log.info("running " + RowSquareSumJob.class.getName());
     Path outPath = new Path(A.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
@@ -95,11 +97,11 @@ public class RowSquareSumJob extends AbstractJob {
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
-    Matrix centRes = AlgebraCommon.mapDirToSparseMatrix(outPath, A.numRows(),
-        A.numCols(), conf);
-    Vector resVec = centRes.viewRow(0);
-    System.out.println("Sum of the rows of " + A.getRowPath());
-    System.out.println(resVec);
+//    Matrix centRes = AlgebraCommon.mapDirToSparseMatrix(outPath, A.numRows(),
+//        A.numCols(), conf);
+//    Vector resVec = centRes.viewRow(0);
+//    System.out.println("Sum of the rows of " + A.getRowPath());
+//    System.out.println(resVec);
     return outPath;
   }
 
