@@ -84,7 +84,7 @@ public class ErrDMJ extends AbstractJob {
       log.warn("----------- Skip already exists: " + outPath);
     }
     Vector sumErrVec = AlgebraCommon.mapDirToSparseVector(outPath, 1, 
-        A.numCols(), conf);
+        X.numCols(), conf);
     double maxColErr = Double.MIN_VALUE;
     double sumColErr = 0;
     int cntColErr = 0;
@@ -108,6 +108,8 @@ public class ErrDMJ extends AbstractJob {
   public Job run(Configuration conf, Path xPath, Path matrixAInputPath,
       Path ytPath, Path outPath, int aRows, int ytRows, int ytCols)
       throws IOException, InterruptedException, ClassNotFoundException {
+    conf = new Configuration(conf);
+
     conf.set(MAPDIRMATRIXX, xPath.toString());
     conf.set(MAPDIRMATRIXYT, ytPath.toString());
     conf.setInt(YTROWS, ytRows);
