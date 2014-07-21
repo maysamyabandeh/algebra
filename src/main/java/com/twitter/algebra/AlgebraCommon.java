@@ -153,9 +153,20 @@ public class AlgebraCommon {
   public static DenseMatrix toDenseMatrix(DistributedRowMatrix origMtx) throws IOException {
     MapDir mapDir = new MapDir(new Configuration(), origMtx.getRowPath());
     DenseMatrix mtx = new DenseMatrix(origMtx.numRows(), origMtx.numCols());
-    Iterator<MatrixSlice> sliceIterator = mapDir.iterateAll();
+    Iterator<MatrixSlice> sliceIterator;
+    try {
+      sliceIterator = mapDir.iterateAll();
+    } catch (Exception e) {
+      log.info(e.toString());
+      log.info("Input is not in matrix format, trying SequenceFileFormat instead ...");
+      sliceIterator = origMtx.iterateAll();
+    }
     while (sliceIterator.hasNext()) {
       MatrixSlice slice = sliceIterator.next();
+//      int r = slice.index();
+//      for (int c = 0; c < mtx.numCols(); c++) {
+//        mtx.set(r, c, slice.get(c));
+//      }
       mtx.viewRow(slice.index()).assign(slice.vector());
     }
     mapDir.close();
