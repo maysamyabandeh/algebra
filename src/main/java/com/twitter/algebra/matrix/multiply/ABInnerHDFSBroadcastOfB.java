@@ -178,7 +178,7 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
       String inMemMatrixDir, Path matrixOutputPath, int inMemMatrixNumRows,
       int inMemMatrixNumCols) throws IOException, InterruptedException,
       ClassNotFoundException {
-    conf = new Configuration();
+    conf = new Configuration(conf);
     FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath, "axbinner");
     conf.set(MATRIXINMEMORY, inMemMatrixDir);
