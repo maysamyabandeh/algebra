@@ -105,7 +105,7 @@ public class ColPartitionJob extends AbstractJob {
         new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
             numCols);
     matrix.setConf(new Configuration(getConf()));
-    partition(matrix, getConf(), "Transpose-" + getInputPath(),
+    partition(matrix, getConf(), "partitioned-" + getInputPath().getName(),
         numColPartitions);
 
     return 0;

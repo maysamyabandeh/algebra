@@ -29,6 +29,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
 import org.apache.mahout.math.DenseMatrix;
@@ -41,6 +42,7 @@ import org.slf4j.LoggerFactory;
 
 import com.twitter.algebra.AlgebraCommon;
 import com.twitter.algebra.matrix.format.MatrixOutputFormat;
+import com.twitter.algebra.nmf.NMFCommon;
 
 /**
  * Perform A x B matrix multiplication
@@ -176,6 +178,9 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
       String inMemMatrixDir, Path matrixOutputPath, int inMemMatrixNumRows,
       int inMemMatrixNumCols) throws IOException, InterruptedException,
       ClassNotFoundException {
+    conf = new Configuration();
+    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
+    NMFCommon.setNumberOfMapSlots(conf, fs, matrixInputPath, "axbinner");
     conf.set(MATRIXINMEMORY, inMemMatrixDir);
     conf.setInt(MATRIXINMEMORYROWS, inMemMatrixNumRows);
     conf.setInt(MATRIXINMEMORYCOLS, inMemMatrixNumCols);
@@ -183,7 +188,6 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
     Job job = new Job(conf);
     job.setJarByClass(ABInnerHDFSBroadcastOfB.class);
     job.setJobName(ABInnerHDFSBroadcastOfB.class.getSimpleName());
-    FileSystem fs = FileSystem.get(matrixInputPath.toUri(), conf);
     matrixInputPath = fs.makeQualified(matrixInputPath);
     matrixOutputPath = fs.makeQualified(matrixOutputPath);
 
@@ -232,6 +236,14 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
       vectorWritable.set(resVector);
       context.write(r, vectorWritable);
     }
+  }
+  
+  /**
+   * @param args
+   * @throws Exception
+   */
+  public static void main(String[] args) throws Exception {
+    ToolRunner.run(new Configuration(), new ABInnerHDFSBroadcastOfB(), args);
   }
 
 }
