@@ -93,7 +93,7 @@ public class ErrDMJ extends AbstractJob {
       Vector.Element el = it.next();
       double errP2 = el.get();
       double origP2 =  xColSumVec.get(el.index());
-      double colErr = errP2 / origP2;
+      double colErr = Math.sqrt(errP2 / origP2);
       log.info("col: " + el.index() + " sum(err^2): " + errP2 + " sum(val^2): " + 
           origP2 + " colErr: " + colErr);
       maxColErr = Math.max(colErr, maxColErr);
