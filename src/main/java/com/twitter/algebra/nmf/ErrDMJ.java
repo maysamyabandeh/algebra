@@ -24,24 +24,27 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Counters;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.RandomAccessSparseVector;
-import org.apache.mahout.math.SparseMatrix;
+import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
+import org.apache.mahout.math.Vector.Element;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.twitter.algebra.AlgebraCommon;
-import com.twitter.algebra.MergeVectorsReducer;
 import com.twitter.algebra.matrix.format.MapDir;
 import com.twitter.algebra.matrix.format.MatrixOutputFormat;
 
@@ -134,8 +137,8 @@ public class ErrDMJ extends AbstractJob {
 
     int numReducers = 1;
     job.setNumReduceTasks(numReducers);
-    job.setCombinerClass(MergeVectorsReducer.class);
-    job.setReducerClass(MergeVectorsReducer.class);
+    job.setCombinerClass(SumVectorsReducer.class);
+    job.setReducerClass(SumVectorsReducer.class);
     
     job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
@@ -150,11 +153,12 @@ public class ErrDMJ extends AbstractJob {
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
     private MapDir xMapDir;
-    private SparseMatrix ytMatrix;
+    private Matrix ytMatrix;
     private VectorWritable xVectorw = new VectorWritable();
     private VectorWritable outvw = new VectorWritable();
     private IntWritable iw = new IntWritable(0);
     double totalDiff = 0;
+    Vector resVector = null;
 
     @Override
     public void setup(Context context) throws IOException {
@@ -180,20 +184,18 @@ public class ErrDMJ extends AbstractJob {
         return;
       }
       Vector xv = xVectorw.get();
-      Vector sumVec = new RandomAccessSparseVector(xv.size());
-      Iterator<Vector.Element> xIt = xv.nonZeroes().iterator();
-      while (xIt.hasNext()) {
-        Vector.Element xelement = xIt.next();
-        int colIndex = xelement.index();
-        // row of yt is col of y
-        double dotRes = av.dot(ytMatrix.viewRow(colIndex));
-        double diff = dotRes - xelement.get();
-        totalDiff += Math.abs(diff);
-        double squareDiff = diff * diff;
-        sumVec.set(colIndex, squareDiff);
-        outvw.set(sumVec);
-        context.write(iw, outvw);
+      if (resVector == null)
+        resVector = new RandomAccessSparseVector(ytMatrix.numRows());
+      AlgebraCommon.vectorTimesMatrixTranspose(av, ytMatrix, resVector);
+      Vector errVector = resVector.minus(xv);
+      for (Vector.Element el : errVector.nonZeroes()) {
+        int eli = el.index();
+        double val = el.get();
+        errVector.set(eli, val * val);
       }
+      totalDiff += Math.abs(errVector.zSum());
+      outvw.set(errVector);
+      context.write(iw, outvw);
     }
 
     @Override
@@ -205,6 +207,34 @@ public class ErrDMJ extends AbstractJob {
       context.getCounter("Result", "sumAbsMilli").increment(
           (int) (totalDiff * 1000));
       context.getCounter("Result", "sumAbs").increment((int) (totalDiff));
+    }
+  }
+
+  static public class SumVectorsReducer
+      extends
+      Reducer<WritableComparable<?>, VectorWritable, WritableComparable<?>, VectorWritable> {
+    @Override
+    public void reduce(WritableComparable<?> key,
+        Iterable<VectorWritable> vectors, Context context) throws IOException,
+        InterruptedException {
+      Vector merged = sumToVector(vectors.iterator());
+      context.write(key, new VectorWritable(new SequentialAccessSparseVector(
+          merged)));
+    }
+
+    Vector sumToVector(Iterator<VectorWritable> vectors) {
+      Vector accumulator = vectors.next().get();
+      while (vectors.hasNext()) {
+        VectorWritable v = vectors.next();
+        if (v != null) {
+          for (Element nonZeroElement : v.get().nonZeroes()) {
+            int i = nonZeroElement.index();
+            double preVal = accumulator.get(i);
+            accumulator.setQuick(i, preVal + nonZeroElement.get());
+          }
+        }
+      }
+      return accumulator;
     }
   }
 
