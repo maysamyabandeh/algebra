@@ -235,18 +235,22 @@ public class AlgebraCommon {
   }
 
   /**
-   * Multiply a vector with the transpose of a matrix
+   * Multiply a vector with transpose of a matrix
    * @param vector V
-   * @param matrix M
-   * @param resVector will be filled with V * M'
-   * @return V * M'
+   * @param transpose of matrix M
+   * @param resVector will be filled with V * M
+   * @return V * M
    */
-  static Vector vectorTimesMatrixTranspose(Vector vector, Matrix matrix,
-      DenseVector resVector) {
-    int nRows = matrix.numRows();
-    for (int r = 0; r < nRows; r++) {
-      Double resDouble = vector.dot(matrix.viewRow(r));
-      resVector.set(r, resDouble);
+  public static Vector vectorTimesMatrixTranspose(Vector vector, Matrix matrixTranspose,
+      Vector resVector) {
+    int nCols = matrixTranspose.numRows();
+    for (int c = 0; c < nCols; c++) {
+      Vector col = matrixTranspose.viewRow(c);
+      double resDouble = 0d;
+      boolean hasNonZero = col.getNumNondefaultElements() != 0;
+      if (hasNonZero)
+        resDouble = vector.dot(col);
+      resVector.set(c, resDouble);
     }
     return resVector;
   }
