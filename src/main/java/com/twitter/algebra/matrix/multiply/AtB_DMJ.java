@@ -32,6 +32,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
 import org.apache.mahout.math.RandomAccessSparseVector;
@@ -86,7 +87,15 @@ public class AtB_DMJ extends AbstractJob {
   public static final String RESULTCOLS = "matrix.result.num.cols";
   public static final String PARTITIONCOLS = "matrix.partition.num.cols";
   public static final String USEINMEMCOMBINER = "matrix.useInMemCombiner";
-
+  
+  /**
+   * @param args
+   * @throws Exception
+   */
+  public static void main(String[] args) throws Exception {
+    ToolRunner.run(new Configuration(), new AtB_DMJ(), args);
+  }
+  
   @Override
   public int run(String[] strings) throws Exception {
     addOutputOption();
@@ -101,11 +110,11 @@ public class AtB_DMJ extends AbstractJob {
       return -1;
     }
 
-    Path aPath = new Path(getOption("atMatrix"));
+    Path atPath = new Path(getOption("atMatrix"));
     Path bPath = new Path(getOption("bMatrix"));
     int atCols = Integer.parseInt(getOption("numColsAt"));
     int bCols = Integer.parseInt(getOption("numColsB"));
-    run(getConf(), aPath, bPath, getOutputPath(), atCols, bCols, 1, 1, true);
+    run(getConf(), atPath, bPath, getOutputPath(), atCols, bCols, 1, 1, true);
     return 0;
   }
 
@@ -348,7 +357,7 @@ public class AtB_DMJ extends AbstractJob {
    * 
    */
   public static class MyMapper extends
-      Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
+  Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
     private MapDir otherMapDir;
     private boolean aIsMapDir;
     InMemCombiner inMemCombiner;
