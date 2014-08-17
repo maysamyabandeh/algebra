@@ -30,9 +30,10 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
-import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -64,6 +65,14 @@ public class ABOuterHDFSBroadcastOfA extends AbstractJob {
   public static final String MATRIXINMEMORYROWS = "memRows";
   public static final String MATRIXINMEMORYCOLS = "memCols";
 
+  /**
+   * @param args
+   * @throws Exception
+   */
+  public static void main(String[] args) throws Exception {
+    ToolRunner.run(new Configuration(), new ABOuterHDFSBroadcastOfA(), args);
+  }
+  
   @Override
   public int run(String[] strings) throws Exception {
     addInputOption();
@@ -214,7 +223,7 @@ public class ABOuterHDFSBroadcastOfA extends AbstractJob {
 
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-    private DenseMatrix inMemMatrix;
+    private Matrix inMemMatrix;
     private VectorWritable outvw = new VectorWritable();
     private IntWritable outiw = new IntWritable();
 
@@ -224,8 +233,7 @@ public class ABOuterHDFSBroadcastOfA extends AbstractJob {
       Path inMemMatrixPath = new Path(conf.get(MATRIXINMEMORY));
       int inMemMatrixNumRows = conf.getInt(MATRIXINMEMORYROWS, 0);
       int inMemMatrixNumCols = conf.getInt(MATRIXINMEMORYCOLS, 0);
-      //TODO: Add support for in-memory sparse matrix
-      inMemMatrix = AlgebraCommon.mapDirToDenseMatrix(inMemMatrixPath,
+      inMemMatrix = AlgebraCommon.mapDirToSparseMatrix(inMemMatrixPath,
           inMemMatrixNumRows, inMemMatrixNumCols, conf);
     }
 
