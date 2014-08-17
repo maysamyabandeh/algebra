@@ -12,7 +12,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
+ */
 
 package com.twitter.algebra.matrix.multiply;
 
@@ -32,8 +32,9 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.CardinalityException;
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.RandomAccessSparseVector;
+import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -89,14 +90,10 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
    * Perform A x B, where A and B are already wrapped in a DistributedRowMatrix
    * object. Refer to {@link ABInnerHDFSBroadcastOfB} for further details.
    * 
-   * @param conf
-   *          the initial configuration
-   * @param A
-   *          matrix A
-   * @param B
-   *          matrix B
-   * @param label
-   *          the label for the output directory
+   * @param conf the initial configuration
+   * @param A matrix A
+   * @param B matrix B
+   * @param label the label for the output directory
    * @return AxB wrapped in a DistributedRowMatrix object
    * @throws IOException
    * @throws InterruptedException
@@ -112,14 +109,16 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
     Path outPath = new Path(A.getOutputTempPath(), label);
     FileSystem fs = FileSystem.get(outPath.toUri(), conf);
     ABInnerHDFSBroadcastOfB job = new ABInnerHDFSBroadcastOfB();
+
     if (!fs.exists(outPath)) {
       job.run(conf, A.getRowPath(), B.getRowPath(), outPath, B.numRows(),
           B.numCols());
     } else {
       log.warn("----------- Skip already exists: " + outPath);
     }
-    DistributedRowMatrix distRes = new DistributedRowMatrix(outPath,
-        A.getOutputTempPath(), A.numRows(), B.numCols());
+    DistributedRowMatrix distRes =
+        new DistributedRowMatrix(outPath, A.getOutputTempPath(), A.numRows(),
+            B.numCols());
     distRes.setConf(conf);
     return distRes;
   }
@@ -129,18 +128,13 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
    * {@link SequenceFileInputFormat} Refer to {@link ABInnerHDFSBroadcastOfB}
    * for further details.
    * 
-   * @param conf
-   *          the initial configuration
-   * @param matrixInputPath
-   *          path to matrix A
-   * @param inMemMatrixDir
-   *          path to matrix B (must be small enough to fit into memory)
-   * @param matrixOutputPath
-   *          path to which AxB will be written
-   * @param inMemMatrixNumRows
-   *          B rows
-   * @param inMemMatrixNumCols
-   *          B cols
+   * @param conf the initial configuration
+   * @param matrixInputPath path to matrix A
+   * @param inMemMatrixDir path to matrix B (must be small enough to fit into
+   *          memory)
+   * @param matrixOutputPath path to which AxB will be written
+   * @param inMemMatrixNumRows B rows
+   * @param inMemMatrixNumCols B cols
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
@@ -158,18 +152,13 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
    * {@link SequenceFileInputFormat} Refer to {@link ABInnerHDFSBroadcastOfB}
    * for further details.
    * 
-   * @param conf
-   *          the initial configuration
-   * @param matrixInputPath
-   *          path to matrix A
-   * @param inMemMatrixDir
-   *          path to matrix B (must be small enough to fit into memory)
-   * @param matrixOutputPath
-   *          path to which AxB will be written
-   * @param inMemMatrixNumRows
-   *          B rows
-   * @param inMemMatrixNumCols
-   *          B cols
+   * @param conf the initial configuration
+   * @param matrixInputPath path to matrix A
+   * @param inMemMatrixDir path to matrix B (must be small enough to fit into
+   *          memory)
+   * @param matrixOutputPath path to which AxB will be written
+   * @param inMemMatrixNumRows B rows
+   * @param inMemMatrixNumCols B cols
    * @throws IOException
    * @throws InterruptedException
    * @throws ClassNotFoundException
@@ -195,14 +184,15 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
     job.setInputFormatClass(SequenceFileInputFormat.class);
     FileOutputFormat.setOutputPath(job, matrixOutputPath);
     job.setMapperClass(MyMapper.class);
-    
+
     job.setNumReduceTasks(0);
     job.setOutputFormatClass(MatrixOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
 
     // since we do not use reducer, to get total order, the map output files has
-    // to be renamed after this function returns: {@link AlgebraCommon#fixPartitioningProblem}
+    // to be renamed after this function returns: {@link
+    // AlgebraCommon#fixPartitioningProblem}
     job.submit();
     boolean res = job.waitForCompletion(true);
     if (!res)
@@ -211,8 +201,8 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
 
   public static class MyMapper extends
       Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-    private DenseMatrix inMemMatrix;
-    private DenseVector resVector;
+    private Matrix inMemMatrixTranspose;
+    private Vector resVector;
     private VectorWritable vectorWritable = new VectorWritable();
 
     @Override
@@ -221,9 +211,10 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
       Path inMemMatrixPath = new Path(conf.get(MATRIXINMEMORY));
       int inMemMatrixNumRows = conf.getInt(MATRIXINMEMORYROWS, 0);
       int inMemMatrixNumCols = conf.getInt(MATRIXINMEMORYCOLS, 0);
-      //TODO: Add support for in-memory sparse matrix
-      inMemMatrix = AlgebraCommon.mapDirToDenseMatrix(inMemMatrixPath,
-          inMemMatrixNumRows, inMemMatrixNumCols, conf);
+      Matrix inMemMatrix =
+          (Matrix) AlgebraCommon.mapDirToSparseMatrix(inMemMatrixPath,
+              inMemMatrixNumRows, inMemMatrixNumCols, conf);
+      inMemMatrixTranspose = inMemMatrix.transpose();
     }
 
     @Override
@@ -231,13 +222,15 @@ public class ABInnerHDFSBroadcastOfB extends AbstractJob {
         throws IOException, InterruptedException {
       Vector row = v.get();
       if (resVector == null)
-        resVector = new DenseVector(inMemMatrix.numCols());
-      AlgebraCommon.vectorTimesMatrix(row, inMemMatrix, resVector);
-      vectorWritable.set(resVector);
+        resVector =
+            new RandomAccessSparseVector(inMemMatrixTranspose.numRows());
+      AlgebraCommon.vectorTimesMatrixTranspose(row, inMemMatrixTranspose,
+          resVector);
+      vectorWritable.set(new SequentialAccessSparseVector(resVector));
       context.write(r, vectorWritable);
     }
   }
-  
+
   /**
    * @param args
    * @throws Exception
