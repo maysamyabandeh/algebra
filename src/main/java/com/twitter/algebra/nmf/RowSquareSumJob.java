@@ -70,7 +70,7 @@ public class RowSquareSumJob extends AbstractJob {
         new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
             numCols);
     matrix.setConf(new Configuration(getConf()));
-    RowSquareSumJob.run(getConf(), matrix, "combined-" + getInputPath());
+    RowSquareSumJob.run(getConf(), matrix, "rowsquaresum-" + getInputPath().getName());
     return 0;
   }
 

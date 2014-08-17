@@ -75,7 +75,7 @@ public class PartitionerJob extends AbstractJob {
         new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
             numCols);
     matrix.setConf(new Configuration(getConf()));
-    PartitionerJob.run(getConf(), matrix, numParts, "partitioned-" + getInputPath());
+    PartitionerJob.run(getConf(), matrix, numParts, "partitioned-" + getInputPath().getName());
     return 0;
   }
 

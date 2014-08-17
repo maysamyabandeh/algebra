@@ -29,6 +29,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
@@ -49,6 +50,10 @@ import com.twitter.algebra.matrix.format.RowPartitioner;
 public class CombinerJob extends AbstractJob {
   private static final Logger log = LoggerFactory
       .getLogger(CombinerJob.class);
+  
+  public static void main(String[] args) throws Exception {
+    ToolRunner.run(new CombinerJob(), args);
+  }
 
   @Override
   public int run(String[] strings) throws Exception {
@@ -67,7 +72,7 @@ public class CombinerJob extends AbstractJob {
         new DistributedRowMatrix(getInputPath(), getTempPath(), numRows,
             numCols);
     matrix.setConf(new Configuration(getConf()));
-    CombinerJob.run(getConf(), matrix, "combined-" + getInputPath());
+    CombinerJob.run(getConf(), matrix, "combined-" + getInputPath().getName());
     return 0;
   }
 

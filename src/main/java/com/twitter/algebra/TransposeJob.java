@@ -90,7 +90,7 @@ public class TransposeJob extends AbstractJob {
     DistributedRowMatrix matrix = new DistributedRowMatrix(getInputPath(),
         getTempPath(), numRows, numCols);
     matrix.setConf(new Configuration(getConf()));
-    transpose(matrix, getConf(), "Transpose-" + getInputPath());
+    transpose(matrix, getConf(), "Transpose-" + getInputPath().getName());
 
     return 0;
   }
